@@ -1,89 +1,289 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template Email Sender</title>
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bulk Email Sender</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.quilljs.com/1.3.7/quill.snow.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+          <i class="bi bi-envelope-paper-heart-fill text-primary me-2"></i>Bulk
+          Email Sender
+        </a>
+      </div>
+    </nav>
+
     <div class="container mt-4">
-        <div class="row">
-            <div class="col-md-8">
-                <h1>Template Email Sender</h1>
-                
-                <!-- CSV Upload Section -->
+      <div class="row">
+        <div class="col-lg-8">
+          <form id="email-form" enctype="multipart/form-data">
+            <div class="card shadow-sm mb-4">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">
+                  <i class="bi bi-1-circle-fill me-2 text-primary"></i>Upload
+                  Data & Attachments
+                </h5>
+              </div>
+              <div class="card-body">
                 <div class="mb-3">
-                    <label for="csv-file" class="form-label">Upload CSV:</label>
-                    <input type="file" name="csv_file" accept=".csv" id="csv-file" class="form-control" onchange="loadHeaders()" required>
+                  <label for="csv-file" class="form-label fw-medium"
+                    >Upload CSV File:</label
+                  >
+                  <input
+                    type="file"
+                    class="form-control"
+                    id="csv-file"
+                    name="csv_file"
+                    accept=".csv, text/csv"
+                    required
+                  />
+                  <div class="form-text">
+                    Must have headers matching placeholders, e.g., {ColumnName}.
+                  </div>
                 </div>
-
-                <!-- File Upload Section -->
+                <div id="csv-headers-list" class="mb-3 visually-hidden">
+                  <label class="form-label fw-medium"
+                    >Detected CSV Headers:</label
+                  >
+                  <div
+                    id="headers-container"
+                    class="border rounded p-2 bg-light-subtle"
+                  >
+                    <span class="text-muted small"
+                      >No headers detected yet.</span
+                    >
+                  </div>
+                </div>
                 <div class="mb-3">
-                    <label for="attachments" class="form-label">Upload Files (Images/PDFs):</label>
-                    <input type="file" name="attachments" id="attachments" class="form-control" multiple>
+                  <label for="attachments" class="form-label fw-medium"
+                    >Attach Files (Optional):</label
+                  >
+                  <input
+                    type="file"
+                    class="form-control"
+                    id="attachments"
+                    name="attachments"
+                    multiple
+                  />
+                  <div class="form-text">
+                    These files will be attached to every email sent.
+                  </div>
                 </div>
-
-                <form id="email-form" method="POST" enctype="multipart/form-data" action="/generate">
-                    <!-- Recipient Email Section -->
-                    <div class="mb-3">
-                        <label for="recipient-email" class="form-label">Recipient Email:</label>
-                        <input type="text" id="recipient-email" name="recipient_email" class="form-control" placeholder="Enter the recipient email (use {} for placeholders)" required>
-                    </div>
-                
-                    <!-- Subject Line Section -->
-                    <div class="mb-3">
-                        <label for="subject" class="form-label">Email Subject:</label>
-                        <input type="text" id="subject" name="subject" class="form-control" placeholder="Enter the email subject (use {} for placeholders)" required>
-                    </div>
-                
-                    <!-- Body Section -->
-                    <div class="mb-3">
-                        <label for="template" class="form-label">Write your email template:</label>
-                        <div id="editor-container"></div>
-                        <input type="hidden" id="email-template" name="template">
-                    </div>
-                
-                    <!-- Preview Button -->
-                    <button type="button" class="btn btn-secondary" onclick="renderPreview()">See Preview</button>
-                
-                    <!-- Header Selection Section -->
-                    <div id="header-selection" style="margin-top: 20px; overflow-y: auto; max-height: 150px;">
-                        <!-- This is where the header selection dropdown will appear -->
-                    </div>
-                
-                    <!-- Preview Section -->
-                    <div id="preview-container" style="margin-top: 20px;">
-                        <!-- This is where the preview will appear -->
-                    </div>
-                
-                    <button type="submit" class="btn btn-primary">Generate and Send Emails</button>
-                </form>  
-                
+              </div>
             </div>
 
-            <div class="col-md-4">
-                <div id="help-section" class="card">
-                    <div class="card-body">
-                        <h5>How to Use Template Email Sender</h5>
-                        <ul>
-                            <li>Upload your CSV file with headers matching the placeholders you want to use.</li>
-                            <li>Upload any files or images you want to attach to the emails.</li>
-                            <li>Enter your email subject. You can use curly braces `{}` for placeholders.</li>
-                            <li>Type your email body in the editor. Use curly braces `{}` for placeholders.</li>
-                            <li>When you type `{`, a closing `}` will automatically be added. A dropdown will appear for you to select the CSV header that matches the placeholder.</li>
-                            <li>Click "Generate and Send Emails" to process your emails.</li>
-                        </ul>
-                    </div>
+            <div class="card shadow-sm mb-4">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">
+                  <i class="bi bi-2-circle-fill me-2 text-primary"></i>Compose
+                  Email Template
+                </h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label for="recipient-template" class="form-label fw-medium"
+                    >Recipient Email Template:</label
+                  >
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="recipient-template"
+                    name="recipient_template"
+                    placeholder="e.g., {Email} or {contact_email}"
+                    required
+                  />
+                  <div class="form-text">
+                    Use a placeholder matching exactly one CSV header, e.g.,
+                    {Email}.
+                  </div>
                 </div>
+
+                <div class="mb-3">
+                  <label for="subject-template" class="form-label fw-medium"
+                    >Subject Template:</label
+                  >
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="subject-template"
+                    name="subject_template"
+                    placeholder="e.g., Welcome {FirstName}! Special offer inside..."
+                    required
+                  />
+                  <div class="form-text">
+                    Use placeholders like {FirstName}, {OrderNumber}, etc.
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="editor-container" class="form-label fw-medium"
+                    >Body Template:</label
+                  >
+                  <div id="editor-wrapper">
+                    <div id="editor-container"></div>
+                  </div>
+                  <input
+                    type="hidden"
+                    id="body-template"
+                    name="body_template"
+                  />
+                  <div class="form-text">
+                    Use the rich text editor above. Add placeholders like
+                    {LastName}, {Product}.
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <div class="card shadow-sm mb-4">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">
+                  <i class="bi bi-3-circle-fill me-2 text-primary"></i>Preview &
+                  Send
+                </h5>
+              </div>
+              <div class="card-body">
+                <div class="d-flex align-items-center flex-wrap">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary me-3 mb-2"
+                    id="preview-button"
+                    disabled
+                  >
+                    <i class="bi bi-eye me-1"></i>Generate Preview (First Row)
+                  </button>
+                  <button
+                    type="submit"
+                    class="btn btn-primary px-4 mb-2"
+                    id="send-button"
+                  >
+                    <span
+                      class="spinner-border spinner-border-sm me-1"
+                      role="status"
+                      aria-hidden="true"
+                      style="display: none"
+                    ></span>
+                    <i class="bi bi-send-fill me-1"></i>Send Emails
+                  </button>
+                </div>
+
+                <div id="preview-area" class="mt-4 visually-hidden">
+                  <hr />
+                  <h6>
+                    <i class="bi bi-binoculars-fill me-2 text-secondary"></i
+                    >Email Preview (Based on First Data Row)
+                  </h6>
+                  <div class="card border-secondary">
+                    <div class="card-body preview-content">
+                      <p>
+                        <strong>To:</strong>
+                        <span id="preview-to" class="text-muted"></span>
+                      </p>
+                      <p>
+                        <strong>Subject:</strong>
+                        <span id="preview-subject" class="text-muted"></span>
+                      </p>
+                      <hr />
+                      <div id="preview-body"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+
+          <div id="status-message" class="mt-4 mb-5" aria-live="polite"></div>
         </div>
+
+        <div class="col-lg-4">
+          <div class="card sticky-instructions shadow-sm">
+            <div class="card-header bg-light">
+              <h5 class="mb-0">
+                <i class="bi bi-info-circle-fill me-2 text-primary"></i
+                >Instructions
+              </h5>
+            </div>
+            <div class="card-body">
+              <ol class="list-group list-group-flush list-group-numbered small">
+                <li class="list-group-item">
+                  <strong>Upload CSV:</strong> Select your CSV file. The first
+                  row must contain headers (e.g., `Email`, `FirstName`,
+                  `Amount`). Header names are case-sensitive.
+                </li>
+                <li class="list-group-item">
+                  <strong>Attachments (Optional):</strong> Add any files to
+                  attach to every email.
+                </li>
+                <li class="list-group-item">
+                  <strong>Recipient:</strong> Enter the email address template
+                  using one header like `{Email}`.
+                </li>
+                <li class="list-group-item">
+                  <strong>Subject:</strong> Enter the subject line. Use
+                  placeholders like `{FirstName}`.
+                </li>
+                <li class="list-group-item">
+                  <strong>Body:</strong> Write your email content. Use
+                  placeholders like `{Amount}` or `{ProductName}`.
+                </li>
+                <li class="list-group-item">
+                  <strong>Headers Check:</strong> After uploading, detected
+                  headers appear above. Ensure your placeholders `{HeaderName}`
+                  exactly match these.
+                </li>
+                <li class="list-group-item">
+                  <strong>Preview:</strong> Click "Generate Preview" to see the
+                  email using the first data row. Check for placeholder issues.
+                </li>
+                <li class="list-group-item">
+                  <strong>Send:</strong> Click "Send Emails". You may be asked
+                  to authorize via Google (check for pop-ups).
+                </li>
+              </ol>
+              <p class="form-text mt-3 text-danger fw-medium">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Placeholders
+                like `{ColumnName}` are case-sensitive and must exactly match
+                CSV headers.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <footer class="footer mt-auto py-3 bg-light border-top">
+      <div class="container text-center">
+        <span class="text-muted small">Simple Email Sender v1.1</span>
+      </div>
+    </footer>
+
+    <script src="https://cdn.quilljs.com/1.3.7/quill.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-</body>
+  </body>
 </html>
