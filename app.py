@@ -17,14 +17,15 @@ import logging
 import re
 import json
 from werkzeug.wrappers import Response as WerkzeugResponse
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import sys
 from oauthlib.oauth2.rfc6749.errors import InsecureTransportError
 
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -85,9 +86,29 @@ def get_google_flow():
     if CLIENT_CONFIG:
         try:
             redirect_uri = url_for('oauth2callback', _external=True)
-            if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1' and redirect_uri.startswith('https://'):
-                redirect_uri = redirect_uri.replace('https://', 'http://', 1)
 
+            # This check for OAUTHLIB_INSECURE_TRANSPORT should only be for LOCAL development
+            # DO NOT set OAUTHLIB_INSECURE_TRANSPORT=1 in production (Render)
+            if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1':
+                 if redirect_uri.startswith('https://'):
+                      # Only downgrade to HTTP if explicitly enabled for local dev
+                      redirect_uri = redirect_uri.replace('https://', 'http://', 1)
+                      app.logger.warning("OAUTHLIB_INSECURE_TRANSPORT=1: Downgrading redirect_uri to HTTP for local development.")
+                 # Also ensure os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' is set for google-auth-oauthlib
+                 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+            else:
+                 # In production (Render), ensure OAUTHLIB_INSECURE_TRANSPORT is NOT '1'
+                 # and verify the redirect_uri is HTTPS
+                 if not redirect_uri.startswith('https://'):
+                     app.logger.error(f"Generated redirect_uri is not HTTPS: {redirect_uri}. Check ProxyFix setup and server config.")
+                     # Optionally force HTTPS if ProxyFix isn't working as expected
+                     # redirect_uri = redirect_uri.replace('http://', 'https://', 1)
+                 # Ensure google-auth-oauthlib does NOT use insecure transport
+                 if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
+                     del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
+
+
+            app.logger.info(f"Using redirect_uri for Google Flow: {redirect_uri}")
             flow = Flow.from_client_config(
                 CLIENT_CONFIG,
                 scopes=SCOPES,
@@ -97,15 +118,20 @@ def get_google_flow():
         except Exception as e:
             app.logger.error(f"Error creating Flow from client_config: {e}")
             return None
+    # Fallback to InstalledAppFlow is generally NOT recommended for web apps
     elif os.path.exists(CREDENTIALS_PATH) and not CLIENT_CONFIG:
-        # This fallback to InstalledAppFlow might be problematic in web servers.
-        # Consider enforcing web credentials structure if running as a web app.
         try:
             redirect_uri = url_for('oauth2callback', _external=True)
-            if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1' and redirect_uri.startswith('https://'):
-                redirect_uri = redirect_uri.replace('https://', 'http://', 1)
+            # Apply same logic for insecure transport check if needed for this path
+            if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1':
+                 if redirect_uri.startswith('https://'):
+                     redirect_uri = redirect_uri.replace('https://', 'http://', 1)
+                 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+            else:
+                 if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
+                     del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
 
-            app.logger.warning("Falling back to InstalledAppFlow based on credentials.json structure. This may not be suitable for production web servers.")
+            app.logger.warning("Using InstalledAppFlow based on credentials.json. This may not be suitable for production web servers.")
             flow = InstalledAppFlow.from_client_secrets_file(
                 CREDENTIALS_PATH,
                 scopes=SCOPES,
@@ -140,16 +166,16 @@ def get_credentials(require_redirect=False):
                 return creds
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}. Token might be revoked or invalid.")
-                session.pop('credentials', None) # Clear expired/invalid credentials
-                creds = None # Ensure creds is None to trigger re-auth if needed
+                session.pop('credentials', None)
+                creds = None
 
-        if not creds: # Need to authenticate
+        if not creds:
             if require_redirect:
                 flow = get_google_flow()
                 if not flow:
                     app.logger.error("Cannot initiate OAuth flow: Google client configuration not found.")
-                    # Instead of returning None, perhaps redirect to an error page or the landing page with a message
-                    return None # Or consider redirect(url_for('index', error='config_error'))
+
+                    return None
 
                 authorization_url, state = flow.authorization_url(
                     access_type='offline',
@@ -158,12 +184,12 @@ def get_credentials(require_redirect=False):
                 )
                 session['oauth_state'] = state
                 app.logger.info(f"Redirecting user to Google for authorization. State: {state}, URL: {authorization_url}")
-                return redirect(authorization_url) # Return the redirect response object
+                return redirect(authorization_url)
             else:
-                # Called from an API endpoint like /send-emails where redirect isn't desired immediately
+
                 app.logger.info("Credentials not found or invalid, and redirect not required by caller.")
-                return None # Signal to caller that auth is needed
-    return creds # Return valid or refreshed credentials
+                return None
+    return creds
 
 @app.route('/privacy', methods=['GET'])
 def privacy():
@@ -173,13 +199,13 @@ def privacy():
 def oauth2callback():
     state = session.get('oauth_state')
     app.logger.info(f"OAuth Callback received. Session state: {state}, Request state: {request.args.get('state')}")
-    app.logger.info(f"Request URL: {request.url}")
+    app.logger.info(f"Request URL: {request.url}") # This should now be HTTPS on Render
     app.logger.info(f"Request Args: {request.args}")
 
     if not state or state != request.args.get('state'):
         app.logger.error("OAuth callback state mismatch.")
         return jsonify({"success": False, "error": "Invalid state parameter."}), 400
-    session.pop('oauth_state', None) # State consumed
+    session.pop('oauth_state', None)
 
     flow = get_google_flow()
     if not flow:
@@ -187,20 +213,23 @@ def oauth2callback():
         return jsonify({"success": False, "error": "Server configuration error."}), 500
 
     try:
+        # Use the full request URL (which should be HTTPS now thanks to ProxyFix)
         authorization_response = request.url
         app.logger.info(f"Using authorization response URL for fetch_token: {authorization_response}")
 
-        # Ensure HTTPS in production if not using insecure transport explicitly
+        # The check for http:// should ideally not be needed now, but keep as safety
+        # Make sure OAUTHLIB_INSECURE_TRANSPORT is NOT 1 in production
         if 'http://' in authorization_response and not app.debug and os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') != '1':
+             app.logger.warning("HTTP detected in authorization_response URL on production. Attempting to replace with HTTPS. Check ProxyFix.")
              authorization_response = authorization_response.replace('http://', 'https://', 1)
-             app.logger.warning("Replaced http with https in authorization response URL for security.")
+
 
         flow.fetch_token(authorization_response=authorization_response)
         credentials = flow.credentials
-        session['credentials'] = credentials.to_json() # Store credentials in session
+        session['credentials'] = credentials.to_json()
         app.logger.info("OAuth flow completed successfully. Credentials stored in session.")
 
-        # Fetch user info and store email in session for display
+
         try:
             service = build('oauth2', 'v2', credentials=credentials)
             user_info = service.userinfo().get().execute()
@@ -208,33 +237,31 @@ def oauth2callback():
             app.logger.info(f"User authenticated: {session.get('user_email')}")
         except Exception as e:
              app.logger.error(f"Failed to fetch user info after OAuth: {e}")
-             # Continue without user_email in session if this fails, but log it
 
-        return redirect(url_for('main_app')) # Redirect to the main application page
 
+        return redirect(url_for('main_app'))
+
+    # Catch specific OAuth errors
+    except InsecureTransportError as e:
+         app.logger.error(f"InsecureTransportError during OAuth token fetch: {e}", exc_info=True)
+         error_message = "OAuth Error: Insecure transport (HTTP) is not allowed. Ensure app is accessed via HTTPS."
+         return redirect(url_for('index', error='transport_error', details=str(e)[:200]))
     except Exception as e:
         app.logger.error(f"Error during OAuth token fetch: {e}", exc_info=True)
         error_message = f"Failed to fetch OAuth token: {str(e)}"
-        if isinstance(e, InsecureTransportError):
-             error_message = "Failed to fetch OAuth token: Insecure transport (HTTP) is not allowed for OAuth by default. Ensure you are running over HTTPS or have enabled insecure transport for local development."
-        elif "Scope has changed" in str(e):
-             # Google sometimes returns this benignly if scopes granted previously differ slightly
-             app.logger.warning(f"Scope change detected during token fetch, proceeding: {e}")
-             # It might be okay to proceed, but could indicate an issue. Redirecting might be safer.
-             # For now, return error to user to retry sign-in
-             error_message = f"OAuth scope issue detected: {str(e)}. Please try authenticating again."
-             # Clear potentially problematic credentials before redirecting
-             session.pop('credentials', None)
-             session.pop('user_email', None)
 
-        # Render an error page or return JSON? Returning JSON might be confusing if user expected redirect.
-        # Let's redirect to landing page with an error query param.
         error_param = "oauth_error"
-        if "scope" in error_message.lower(): error_param = "scope_error"
-        if "transport" in error_message.lower(): error_param = "transport_error"
-        # Consider flashing a message instead of query param if you use Flask-Flash
-        return redirect(url_for('index', error=error_param, details=str(e)[:200])) # Redirect to landing page with error
-        # Alternative: return jsonify({"success": False, "error": error_message}), 400
+        if "invalid_grant" in str(e).lower(): # Example of catching specific grant errors
+             error_param = "invalid_grant"
+             error_message = "OAuth Error: Invalid grant or token expired/revoked. Please sign in again."
+        elif "redirect_uri_mismatch" in str(e).lower(): # Catch mismatch explicitly if it happens here
+             error_param = "redirect_uri_mismatch"
+             error_message = "OAuth Error: Redirect URI mismatch. Please contact support."
+
+
+        session.pop('credentials', None)
+        session.pop('user_email', None)
+        return redirect(url_for('index', error=error_param, details=str(e)[:200]))
 
 
 def create_message(sender, to, subject, body_html, attachments=None):
@@ -246,15 +273,15 @@ def create_message(sender, to, subject, body_html, attachments=None):
     msg_alternative = MIMEMultipart('alternative')
     message.attach(msg_alternative)
 
-    # Ensure body_html is treated as UTF-8
+
     msg_alternative.attach(MIMEText(body_html, 'html', _charset='utf-8'))
 
     if attachments:
         for file_storage in attachments:
-            if file_storage and file_storage.filename: # Check if it has a filename
+            if file_storage and file_storage.filename:
                 content_type, encoding = mimetypes.guess_type(file_storage.filename)
                 if content_type is None or encoding is not None:
-                    content_type = 'application/octet-stream' # Default fallback
+                    content_type = 'application/octet-stream'
                 main_type, sub_type = content_type.split('/', 1)
 
                 try:
@@ -264,7 +291,7 @@ def create_message(sender, to, subject, body_html, attachments=None):
                     encoders.encode_base64(part)
                     part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(file_storage.filename))
                     message.attach(part)
-                    file_storage.seek(0) # Reset stream position in case it's read again
+                    file_storage.seek(0)
                 except Exception as e:
                     app.logger.warning(f"Could not attach file {file_storage.filename}: {e}")
             else:
@@ -280,18 +307,18 @@ def send_gmail_message(service, user_id, message):
         app.logger.info(f"Message Id: {sent_message['id']} sent.")
         return sent_message
     except HttpError as error:
-        # Log the detailed error from Google API
+
         app.logger.error(f"An error occurred sending email via Gmail API: {error.resp.status} - {error.content}")
-        raise error # Re-raise to be caught by the calling function
+        raise error
     except Exception as e:
         app.logger.error(f"An unexpected error occurred sending email: {e}")
-        raise e # Re-raise
+        raise e
 
 
 def is_valid_email(email):
     if not email or '@' not in email or ' ' in email:
         return False
-    # Basic regex, consider a more robust library if needed for edge cases
+
     pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
     return re.match(pattern, email) is not None
 
@@ -307,7 +334,7 @@ def ratelimit_handler(e):
 
 @app.route('/', methods=['GET'])
 def index():
-    # Landing page doesn't require login
+
     error = request.args.get('error')
     details = request.args.get('details')
     return render_template('index.html', error=error, details=details)
@@ -318,28 +345,27 @@ def main_app():
     creds_or_redirect = get_credentials(require_redirect=True)
 
     if isinstance(creds_or_redirect, WerkzeugResponse):
-        # This means get_credentials returned a redirect response (e.g., to Google OAuth)
+
         return creds_or_redirect
 
     if creds_or_redirect is None:
-        # This case should ideally be handled by require_redirect=True triggering the OAuth flow.
-        # If it still gets here, it might mean config error or flow issue.
+
+
         if not (CLIENT_CONFIG or os.path.exists(CREDENTIALS_PATH)):
             app.logger.error("Cannot render main app: Google client configuration not found.")
-            # Redirect to landing page with error
+
             return redirect(url_for('index', error='config_missing'))
         else:
-            # Credentials are None, but config exists and redirect didn't happen (unexpected)
+
             app.logger.warning("App route reached without valid credentials, despite require_redirect=True. Config exists.")
-            # Attempt to trigger auth again, or show an error message on the app page
-            # For simplicity, redirect back to index, which might then redirect to /app again, initiating auth
+
             return redirect(url_for('index', error='auth_failed'))
 
 
-    # If we reach here, creds_or_redirect contains valid credentials
+
     user_email = session.get('user_email', 'Unknown User')
     if user_email == 'Unknown User':
-         # Attempt to fetch email if not in session (e.g., session expired partially)
+
          try:
             service = build('oauth2', 'v2', credentials=creds_or_redirect)
             user_info = service.userinfo().get().execute()
@@ -348,7 +374,7 @@ def main_app():
             app.logger.info(f"Fetched user email for session: {user_email}")
          except Exception as e:
              app.logger.error(f"Failed to fetch user info for app page display: {e}")
-             # Proceed with 'Unknown User', but log the issue
+
 
     limits = {
         'MAX_TOTAL_ATTACHMENT_SIZE_MB': app.config['MAX_TOTAL_ATTACHMENT_SIZE_MB'],
@@ -356,14 +382,14 @@ def main_app():
         'MAX_MANUAL_RECIPIENTS': app.config['MAX_MANUAL_RECIPIENTS'],
         'MAX_CSV_RECIPIENTS': app.config['MAX_CSV_RECIPIENTS']
     }
-    # Render the main application template (renamed from index.html)
+
     return render_template('app.html', user_email=user_email, limits=limits)
 
 
 @app.route('/send-emails', methods=['POST'])
 @limiter.limit(lambda: current_app.config['SEND_EMAIL_RATE_LIMIT'])
 def send_emails():
-    creds = get_credentials(require_redirect=False) # Don't redirect from API call
+    creds = get_credentials(require_redirect=False)
     if not creds:
         app.logger.error("Authentication failed in /send-emails endpoint (credentials missing or expired).")
         return jsonify({"success": False, "error": "Authentication required or expired. Please reload the page to sign in again.", "statusCode": 401}), 401
@@ -372,7 +398,7 @@ def send_emails():
         service = build('gmail', 'v1', credentials=creds)
         sender_email = session.get('user_email')
 
-        # Verify sender_email or fetch if missing/invalidated
+
         if not sender_email or '@' not in sender_email:
             try:
                 profile = service.users().getProfile(userId='me').execute()
@@ -382,11 +408,11 @@ def send_emails():
             except HttpError as profile_err:
                 app.logger.error(f"Failed to get Gmail profile even with credentials: {profile_err}")
                 if profile_err.resp.status in [401, 403]:
-                    # Critical auth error, clear session and force re-auth
+
                     session.pop('credentials', None)
                     session.pop('user_email', None)
                     return jsonify({"success": False, "error": f"Gmail authentication error ({profile_err.resp.status}). Your session may have expired. Please reload the page.", "statusCode": 401}), 401
-                # Other profile errors (e.g., 500)
+
                 return jsonify({"success": False, "error": f"Failed to verify sender identity: {profile_err}", "statusCode": 500}), 500
             except Exception as profile_e:
                  app.logger.error(f"Unexpected error fetching profile: {profile_e}")
@@ -417,7 +443,7 @@ def send_emails():
     if not subject_template or not body_template:
         return jsonify({"success": False, "error": "Subject and Body templates are required."}), 400
 
-    # Attachment validation
+
     max_attachments = current_app.config['MAX_ATTACHMENTS_PER_EMAIL']
     if len(attachments) > max_attachments:
          return jsonify({"success": False, "error": f"Too many attachments. Maximum allowed is {max_attachments}.", "statusCode": 400}), 400
@@ -425,19 +451,19 @@ def send_emails():
     total_attachment_size = 0
     valid_attachments = []
     for file_storage in attachments:
-        if file_storage and file_storage.filename: # Ensure it's a valid file object with a name
+        if file_storage and file_storage.filename:
              try:
-                # Get size reliably
+
                 current_pos = file_storage.tell()
                 file_storage.seek(0, os.SEEK_END)
                 size = file_storage.tell()
-                file_storage.seek(current_pos) # Reset position
-                # Fallback if seek fails or returns 0 (e.g., empty stream)
+                file_storage.seek(current_pos)
+
                 if size == 0 and file_storage.content_length is not None and file_storage.content_length > 0:
                     size = file_storage.content_length
                     app.logger.warning(f"Used content_length {size} for {file_storage.filename} as seek returned 0")
 
-                if size > 0: # Only count non-empty files
+                if size > 0:
                     total_attachment_size += size
                     valid_attachments.append(file_storage)
                 else:
@@ -454,7 +480,7 @@ def send_emails():
         max_total_size_mb = app.config['MAX_TOTAL_ATTACHMENT_SIZE_MB']
         return jsonify({"success": False, "error": f"Total attachment size exceeds limit ({max_total_size_mb} MB). Calculated size: {total_attachment_size / (1024*1024):.2f} MB", "statusCode": 400}), 400
 
-    attachments_to_use = valid_attachments # Use only the validated, non-empty attachments
+    attachments_to_use = valid_attachments
 
 
     try:
@@ -468,11 +494,11 @@ def send_emails():
                  return jsonify({"success": False, "error": "Recipient template is required for CSV mode."}), 400
 
             try:
-                # Process CSV
-                csv_content = csv_file.read().decode('utf-8-sig') # Use utf-8-sig to handle BOM
-                df = pd.read_csv(io.StringIO(csv_content), dtype=str) # Read all as string initially
-                df = df.fillna('') # Replace NaN with empty strings
-                df.columns = [col.strip() for col in df.columns] # Trim whitespace from headers
+
+                csv_content = csv_file.read().decode('utf-8-sig')
+                df = pd.read_csv(io.StringIO(csv_content), dtype=str)
+                df = df.fillna('')
+                df.columns = [col.strip() for col in df.columns]
                 csv_headers = df.columns.tolist()
             except MemoryError:
                  app.logger.error("Attempted to process a CSV file that is too large.")
@@ -488,12 +514,12 @@ def send_emails():
             if len(df) > max_csv_recipients:
                  app.logger.warning(f"CSV file has {len(df)} rows, exceeding the limit of {max_csv_recipients}. Truncating.")
                  df = df.head(max_csv_recipients)
-                 # Add a warning result to the output
+
                  results.append({"row": "N/A", "status": "warning", "reason": f"CSV file exceeded the maximum row limit ({max_csv_recipients}). Only the first {max_csv_recipients} rows were processed.", "recipient": "N/A"})
 
 
             for index, row in df.iterrows():
-                # Resolve recipient email using the template
+
                 try:
                     recipient_email_raw = str(row.get(recipient_template.strip('{}'), '')).strip()
                 except KeyError:
@@ -507,16 +533,16 @@ def send_emails():
                     results.append({"row": index + 2, "status": "skipped", "reason": "Invalid email address format", "recipient": recipient_email})
                     continue
 
-                # Personalize subject and body
+
                 personalized_subject = subject_template
                 personalized_body = body_template
                 for header in df.columns:
                     placeholder = "{" + header + "}"
-                    value = str(row.get(header, '')) # Get value, default to empty string
+                    value = str(row.get(header, ''))
                     personalized_subject = personalized_subject.replace(placeholder, value)
                     personalized_body = personalized_body.replace(placeholder, value)
 
-                # Create and send message
+
                 message = create_message(sender_email, recipient_email, personalized_subject, personalized_body, attachments_to_use)
                 try:
                     send_gmail_message(service, 'me', message)
@@ -543,7 +569,7 @@ def send_emails():
                     results.append({"row": total_recipients, "status": "skipped", "reason": "Invalid email address format", "recipient": recipient_email})
                     continue
 
-                # Use templates directly without personalization
+
                 message = create_message(sender_email, recipient_email, subject_template, body_template, attachments_to_use)
                 try:
                     send_gmail_message(service, 'me', message)
@@ -557,15 +583,15 @@ def send_emails():
             return jsonify({"success": False, "error": "Invalid mode specified."}), 400
 
 
-        # Summarize results
+
         success_count = sum(1 for r in results if r['status'] == 'sent')
         skipped_count = sum(1 for r in results if r['status'] == 'skipped')
         failed_count = sum(1 for r in results if r['status'] == 'failed')
-        warning_count = sum(1 for r in results if r['status'] == 'warning') # Count warnings separately
+        warning_count = sum(1 for r in results if r['status'] == 'warning')
 
         summary_message = f"Process completed ({mode} mode). Target(s): {total_recipients}."
         if warning_count > 0:
-             summary_message += f" Warnings: {warning_count}." # Include warnings in summary
+             summary_message += f" Warnings: {warning_count}."
         summary_message += f" Sent: {success_count}, Skipped: {skipped_count}, Failed: {failed_count}."
 
         app.logger.info(summary_message)
@@ -575,7 +601,7 @@ def send_emails():
         app.logger.error("Attempted to process an empty or invalid CSV file.")
         return jsonify({"success": False, "error": "CSV file is empty or invalid."}), 400
     except Exception as e:
-        # Catch-all for unexpected errors during processing
+
         app.logger.error(f"A critical error occurred in /send-emails: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"An unexpected server error occurred: {str(e)}"}), 500
 
@@ -589,9 +615,10 @@ if __name__ == '__main__':
 
     host = os.environ.get('FLASK_RUN_HOST', '127.0.0.1')
     port = int(os.environ.get('FLASK_RUN_PORT', 5000))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'True').lower() in ['true', '1', 't']
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ['true', '1', 't'] # Default Debug to False for production safety
 
     print(f"Starting Flask app on {host}:{port} (Debug: {debug_mode})")
+    # Only warn about insecure transport if actually set (should NOT be in production)
     if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1':
         print("WARNING: OAUTHLIB_INSECURE_TRANSPORT is set. OAuth HTTP is allowed (local development ONLY).")
     print(f"Limits: CSV Rows={app.config['MAX_CSV_RECIPIENTS']}, Manual Emails={app.config['MAX_MANUAL_RECIPIENTS']}, Attachments={app.config['MAX_ATTACHMENTS_PER_EMAIL']}, Total Attach Size={app.config['MAX_TOTAL_ATTACHMENT_SIZE_MB']}MB")
