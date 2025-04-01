@@ -2,8 +2,8 @@ let quill;
 let csvHeaders = [];
 let csvFirstRow = null;
 let csvFileHandle = null;
-let currentMode = "csv"; // 'csv' or 'manual'
-let infoStatusTimeout = null; // To manage the timeout for info messages
+let currentMode = "csv";
+let infoStatusTimeout = null;
 
 const toolbarOptions = [
   [{ header: [1, 2, 3, false] }, { font: [] }],
@@ -28,7 +28,6 @@ function initializeQuill() {
     },
     placeholder: "Compose your email template here...",
   });
-
   const placeholderButton = document.querySelector(".ql-insertPlaceholder");
   if (placeholderButton) {
     placeholderButton.innerHTML = '<i class="bi bi-paperclip"></i>';
@@ -45,7 +44,6 @@ function insertPlaceholderHandler() {
     );
     return;
   }
-
   const header = prompt(
     `Enter the CSV header name you want to insert (case-sensitive):\nAvailable: ${csvHeaders.join(
       ", "
@@ -69,10 +67,8 @@ function handleModeChange(event) {
     currentMode = newMode;
     document.getElementById("current-mode").value = currentMode;
     console.log("Switched to mode:", currentMode);
-
     const csvSection = document.getElementById("csv-mode-pane");
     const manualSection = document.getElementById("manual-mode-pane");
-
     updatePlaceholderInsertersState();
     resetPreview();
     checkPreviewButtonState();
@@ -83,7 +79,6 @@ function updatePlaceholderInsertersState() {
   const enabled = currentMode === "csv" && csvHeaders.length > 0;
   const inserterBtns = document.querySelectorAll(".placeholder-inserter-btn");
   inserterBtns.forEach((btn) => (btn.disabled = !enabled));
-
   const quillToolbarButton = document.querySelector(".ql-insertPlaceholder");
   if (quillToolbarButton) {
     quillToolbarButton.disabled = !enabled;
@@ -94,35 +89,34 @@ function updatePlaceholderInsertersState() {
 
 function handleCsvFileSelect(event) {
   const file = event.target.files[0];
+  if (file && file.size > 16777216) {
+    displayStatus("File size exceeds 16 MB limit.", "danger");
+    event.target.value = "";
+    return;
+  }
   const headersSection = document.getElementById("csv-headers-section");
   const headersContainer = document.getElementById("headers-container");
-
   resetCsvState();
-
   if (!file) {
     headersContainer.innerHTML =
       '<span class="text-muted small">No file selected.</span>';
     headersSection.classList.add("d-none");
     return;
   }
-
   if (currentMode !== "csv") {
     displayStatus("Switched to CSV mode as a file was uploaded.", "info");
     const csvTab = document.getElementById("csv-mode-tab");
     if (csvTab) {
       const tab = new bootstrap.Tab(csvTab);
       tab.show();
-
       currentMode = "csv";
       document.getElementById("current-mode").value = currentMode;
     }
   }
-
   csvFileHandle = file;
   headersContainer.innerHTML =
     '<span class="text-muted small">Parsing CSV... <div class="spinner-border spinner-border-sm ms-1" role="status"><span class="visually-hidden">Loading...</span></div></span>';
   headersSection.classList.remove("d-none");
-
   Papa.parse(file, {
     header: true,
     skipEmptyLines: "greedy",
@@ -146,7 +140,6 @@ function handleCsvFileSelect(event) {
         resetCsvState();
         return;
       }
-
       if (!results.meta.fields || results.meta.fields.length === 0) {
         displayStatus(
           "CSV file seems to be empty or does not contain valid headers in the first row.",
@@ -159,10 +152,8 @@ function handleCsvFileSelect(event) {
         resetCsvState();
         return;
       }
-
       csvHeaders = results.meta.fields.filter((h) => h && h.trim() !== "");
       csvFirstRow = results.data.length > 0 ? results.data[0] : null;
-
       headersContainer.innerHTML = "";
       if (csvHeaders.length > 0) {
         csvHeaders.forEach((header) => {
@@ -193,7 +184,6 @@ function handleCsvFileSelect(event) {
           '<span class="text-warning small">No valid headers detected.</span>';
         headersSection.classList.add("d-none");
       }
-
       updatePlaceholderInsertersState();
       checkPreviewButtonState();
       displayStatus(
@@ -221,14 +211,12 @@ function handleCsvFileSelect(event) {
 function resetCsvState() {
   csvHeaders = [];
   csvFirstRow = null;
-
   const headersSection = document.getElementById("csv-headers-section");
   const headersContainer = document.getElementById("headers-container");
   if (headersSection) headersSection.classList.add("d-none");
   if (headersContainer)
     headersContainer.innerHTML =
       '<span class="text-muted small">Upload a CSV to see headers.</span>';
-
   updatePlaceholderInsertersState();
   checkPreviewButtonState();
   resetPreview();
@@ -247,11 +235,9 @@ function resetPreview() {
 function checkPreviewButtonState() {
   const previewButton = document.getElementById("preview-button");
   if (!previewButton) return;
-
   const subjectFilled =
     document.getElementById("subject-template").value.trim() !== "";
   const bodyFilled = quill && quill.getLength() > 1;
-
   if (currentMode === "csv") {
     previewButton.disabled = !(
       csvFirstRow &&
@@ -270,10 +256,8 @@ function generatePreview() {
   const previewArea = document.getElementById("preview-area");
   const previewContext = document.getElementById("preview-context");
   resetPreview();
-
   const subjectTemplate = document.getElementById("subject-template").value;
   const bodyTemplateHtml = quill.root.innerHTML;
-
   if (!subjectTemplate || quill.getLength() <= 1) {
     displayStatus(
       "Please fill in Subject and Body before previewing.",
@@ -281,14 +265,12 @@ function generatePreview() {
     );
     return;
   }
-
   let previewTo = "(Not Applicable)";
   let previewSubject = subjectTemplate;
   let previewBody = bodyTemplateHtml;
   let contextText = "";
   let unresolvedPlaceholders = new Set();
   const placeholderRegex = /\{(.+?)\}/g;
-
   if (currentMode === "csv") {
     const recipientTemplate =
       document.getElementById("recipient-template").value;
@@ -306,10 +288,8 @@ function generatePreview() {
       );
       return;
     }
-
     previewTo = recipientTemplate;
     contextText = "(Preview based on first CSV data row)";
-
     [recipientTemplate, subjectTemplate, bodyTemplateHtml].forEach(
       (template) => {
         let match;
@@ -320,7 +300,6 @@ function generatePreview() {
         }
       }
     );
-
     csvHeaders.forEach((header) => {
       const placeholder = new RegExp(`\\{${escapeRegExp(header)}\\}`, "g");
       const value =
@@ -350,7 +329,6 @@ function generatePreview() {
         ? " (and others)"
         : "");
     contextText = "(Manual mode preview - Placeholders NOT replaced)";
-
     [subjectTemplate, bodyTemplateHtml].forEach((template) => {
       let match;
       while ((match = placeholderRegex.exec(template)) !== null) {
@@ -358,14 +336,12 @@ function generatePreview() {
       }
     });
   }
-
   document.getElementById("preview-to").textContent = previewTo || "(empty)";
   document.getElementById("preview-subject").textContent =
     previewSubject || "(empty)";
   document.getElementById("preview-body").innerHTML =
     previewBody || "<p>(empty)</p>";
   previewContext.textContent = contextText;
-
   const attachmentFiles = document.getElementById("attachments").files;
   const attachmentListDiv = document.getElementById("preview-attachments");
   if (attachmentFiles.length > 0) {
@@ -376,9 +352,7 @@ function generatePreview() {
   } else {
     attachmentListDiv.innerHTML = "";
   }
-
   previewArea.classList.remove("d-none");
-
   if (currentMode === "csv" && unresolvedPlaceholders.size > 0) {
     displayStatus(
       `Preview Generated. <strong class="text-danger">Warning:</strong> Unresolved placeholders found: ${[
@@ -403,7 +377,6 @@ function handleFormSubmit(event) {
   const sendButton = document.getElementById("send-button");
   const spinner = sendButton.querySelector(".spinner-border");
   const sendButtonIcon = sendButton.querySelector("i");
-
   if (!document.getElementById("subject-template").value.trim()) {
     displayStatus("Please enter a Subject.", "warning");
     return;
@@ -415,7 +388,6 @@ function handleFormSubmit(event) {
       return;
     }
   }
-
   if (currentMode === "csv") {
     if (!csvFileHandle) {
       displayStatus("Please upload a CSV file for CSV mode.", "warning");
@@ -437,11 +409,9 @@ function handleFormSubmit(event) {
       return;
     }
   }
-
   document.getElementById("body-template").value = quill.root.innerHTML;
   const formData = new FormData(event.target);
   formData.set("mode", currentMode);
-
   if (
     currentMode === "csv" &&
     csvFileHandle &&
@@ -451,7 +421,6 @@ function handleFormSubmit(event) {
   } else if (currentMode === "manual" && formData.has("csv_file")) {
     formData.delete("csv_file");
   }
-
   sendButton.disabled = true;
   spinner.style.display = "inline-block";
   if (sendButtonIcon) sendButtonIcon.style.display = "none";
@@ -460,7 +429,6 @@ function handleFormSubmit(event) {
     "info",
     true
   );
-
   fetch("/send-emails", {
     method: "POST",
     body: formData,
@@ -508,9 +476,7 @@ function handleFormSubmit(event) {
         } else {
           errorMessage = escapeHtml(errorMessage);
         }
-
         let detailedMessage = `<h5><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Send Failed</h5><p class="lead">${errorMessage}</p>`;
-
         if (body.results && body.results.length > 0) {
           detailedMessage +=
             '<p class="mt-2 mb-1">Partial results (processing may have stopped):</p>';
@@ -538,7 +504,6 @@ function handleFormSubmit(event) {
       } else if (error.message) {
         message = error.message;
       }
-
       displayStatus(
         `<h5><i class="bi bi-wifi-off text-danger me-2"></i>Error Occurred</h5> <p>${message}</p>`,
         "danger"
@@ -553,7 +518,6 @@ function handleFormSubmit(event) {
 
 function renderResultsTable(results) {
   if (!results || results.length === 0) return "";
-
   let tableHtml = `
         <div class="table-responsive mt-3" style="max-height: 400px; overflow-y: auto;">
           <table class="table table-sm table-striped table-hover small">
@@ -567,7 +531,6 @@ function renderResultsTable(results) {
             </thead>
             <tbody>
     `;
-
   results.forEach((r) => {
     let statusClass = "";
     let iconClass = "";
@@ -588,7 +551,6 @@ function renderResultsTable(results) {
         statusClass = "text-muted";
         iconClass = "bi-question-circle";
     }
-
     const reasonHtml = r.reason
       ? `<span title="${escapeHtml(r.reason)}">${escapeHtml(
           r.reason.substring(0, 150)
@@ -596,7 +558,6 @@ function renderResultsTable(results) {
       : '<span class="text-muted">N/A</span>';
     const recipientHtml = escapeHtml(r.recipient || "N/A");
     const rowNum = r.row || results.indexOf(r) + 1;
-
     tableHtml += `
             <tr>
               <td>${rowNum}</td>
@@ -608,7 +569,6 @@ function renderResultsTable(results) {
             </tr>
         `;
   });
-
   tableHtml += `
             </tbody>
           </table>
@@ -620,27 +580,22 @@ function renderResultsTable(results) {
 function displayStatus(message, type = "info", isLoading = false) {
   const statusMessageDiv = document.getElementById("status-message");
   if (!statusMessageDiv) return;
-
-  // Clear any existing timeout for info messages
   if (infoStatusTimeout) {
     clearTimeout(infoStatusTimeout);
     infoStatusTimeout = null;
   }
-
-  // Determine the style and behavior based on type
   let alertClass = `alert-${type}`;
   let shouldScroll = false;
   let autoDismiss = false;
-  let iconHtml = ""; // Optional icon based on type
-
+  let iconHtml = "";
   if (isLoading) {
-    alertClass = "alert-info"; // Use info style for loading
+    alertClass = "alert-info";
     iconHtml =
       '<div class="spinner-border spinner-border-sm flex-shrink-0 me-3" role="status" style="margin-top: 0.15rem;"><span class="visually-hidden">Loading...</span></div>';
     shouldScroll = true;
   } else if (type === "info") {
-    alertClass = "alert-secondary"; // Use a less prominent style for simple info
-    autoDismiss = true; // Auto-dismiss info messages
+    alertClass = "alert-secondary";
+    autoDismiss = true;
     iconHtml = '<i class="bi bi-info-circle flex-shrink-0 me-2"></i>';
   } else if (type === "success") {
     iconHtml = '<i class="bi bi-check-circle-fill flex-shrink-0 me-2"></i>';
@@ -648,13 +603,10 @@ function displayStatus(message, type = "info", isLoading = false) {
   } else if (type === "warning") {
     iconHtml =
       '<i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>';
-    // Optionally scroll for warnings too: shouldScroll = true;
   } else if (type === "danger") {
     iconHtml = '<i class="bi bi-x-octagon-fill flex-shrink-0 me-2"></i>';
     shouldScroll = true;
   }
-
-  // Create the alert element
   const alertDiv = document.createElement("div");
   alertDiv.className = `alert ${alertClass} d-flex align-items-start fade show`;
   alertDiv.setAttribute("role", "alert");
@@ -663,31 +615,24 @@ function displayStatus(message, type = "info", isLoading = false) {
         <div class="flex-grow-1">${message}</div>
         <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Close" style="margin-top: -0.2rem;"></button>
     `;
-
-  // Replace the content of statusMessageDiv
-  statusMessageDiv.innerHTML = ""; // Clear previous messages first
+  statusMessageDiv.innerHTML = "";
   statusMessageDiv.appendChild(alertDiv);
-
-  // Scroll into view only for important messages
   if (shouldScroll) {
     statusMessageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-
-  // Set timeout to automatically dismiss non-critical info messages
   if (autoDismiss) {
     infoStatusTimeout = setTimeout(() => {
       const currentAlert = statusMessageDiv.querySelector(".alert");
       if (currentAlert && currentAlert.classList.contains("alert-secondary")) {
-        // Only dismiss if it's still the info alert
         const bsAlert = bootstrap.Alert.getOrCreateInstance(currentAlert);
         if (bsAlert) {
           bsAlert.close();
         } else {
-          currentAlert.remove(); // Fallback removal
+          currentAlert.remove();
         }
       }
       infoStatusTimeout = null;
-    }, 4000); // Dismiss after 4 seconds
+    }, 4000);
   }
 }
 
@@ -751,10 +696,8 @@ function insertPlaceholderIntoInput(targetId) {
   }
 }
 
-// Event Listeners
 document.addEventListener("DOMContentLoaded", function () {
   initializeQuill();
-
   const csvFileInput = document.getElementById("csv-file");
   const previewButton = document.getElementById("preview-button");
   const emailForm = document.getElementById("email-form");
@@ -762,18 +705,13 @@ document.addEventListener("DOMContentLoaded", function () {
     '#modeTabs button[data-bs-toggle="tab"]'
   );
   const attachmentInput = document.getElementById("attachments");
-
   if (emailForm) emailForm.addEventListener("submit", handleFormSubmit);
-
   modeTabs.forEach((tab) => {
     tab.addEventListener("shown.bs.tab", handleModeChange);
   });
-
   if (csvFileInput)
     csvFileInput.addEventListener("change", handleCsvFileSelect);
-
   if (previewButton) previewButton.addEventListener("click", generatePreview);
-
   document.querySelectorAll(".placeholder-inserter-btn").forEach((button) => {
     button.addEventListener("click", () => {
       const targetId = button.getAttribute("data-target");
@@ -782,7 +720,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
   });
-
   if (attachmentInput) {
     attachmentInput.addEventListener("change", (event) => {
       const listDiv = document.getElementById("attachment-list");
@@ -804,7 +741,6 @@ document.addEventListener("DOMContentLoaded", function () {
       checkPreviewButtonState();
     });
   }
-
   ["recipient-template", "subject-template", "manual-recipients"].forEach(
     (id) => {
       const el = document.getElementById(id);
@@ -814,7 +750,6 @@ document.addEventListener("DOMContentLoaded", function () {
   if (quill) {
     quill.on("text-change", checkPreviewButtonState);
   }
-
   resetCsvState();
   checkPreviewButtonState();
   currentMode =
