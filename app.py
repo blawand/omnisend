@@ -81,34 +81,26 @@ if not CLIENT_CONFIG and os.path.exists(CREDENTIALS_PATH):
 elif not CLIENT_CONFIG:
     app.logger.warning("Google credentials not found in environment variable GOOGLE_CREDENTIALS_JSON or as credentials.json file.")
 
-
 def get_google_flow():
     if CLIENT_CONFIG:
         try:
             redirect_uri = url_for('oauth2callback', _external=True)
+            is_local_insecure = os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1'
 
-            # This check for OAUTHLIB_INSECURE_TRANSPORT should only be for LOCAL development
-            # DO NOT set OAUTHLIB_INSECURE_TRANSPORT=1 in production (Render)
-            if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1':
-                 if redirect_uri.startswith('https://'):
-                      # Only downgrade to HTTP if explicitly enabled for local dev
-                      redirect_uri = redirect_uri.replace('https://', 'http://', 1)
-                      app.logger.warning("OAUTHLIB_INSECURE_TRANSPORT=1: Downgrading redirect_uri to HTTP for local development.")
-                 # Also ensure os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' is set for google-auth-oauthlib
-                 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+            if is_local_insecure:
+                if redirect_uri.startswith('https://'):
+                    redirect_uri = redirect_uri.replace('https://', 'http://', 1)
+                    app.logger.warning("OAUTHLIB_INSECURE_TRANSPORT=1: Using HTTP redirect_uri for local dev.")
+                os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
             else:
-                 # In production (Render), ensure OAUTHLIB_INSECURE_TRANSPORT is NOT '1'
-                 # and verify the redirect_uri is HTTPS
-                 if not redirect_uri.startswith('https://'):
-                     app.logger.error(f"Generated redirect_uri is not HTTPS: {redirect_uri}. Check ProxyFix setup and server config.")
-                     # Optionally force HTTPS if ProxyFix isn't working as expected
-                     # redirect_uri = redirect_uri.replace('http://', 'https://', 1)
-                 # Ensure google-auth-oauthlib does NOT use insecure transport
-                 if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
-                     del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
+                if not redirect_uri.startswith('https://'):
+                    app.logger.warning(f"Generated redirect_uri was not HTTPS ({redirect_uri}). Forcing HTTPS. Check ProxyFix/headers.")
+                    redirect_uri = redirect_uri.replace('http://', 'https://', 1)
+                if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
+                     del os.environ['OAUTHLIB_INSECURE_TRANSPORT'] # Remove if it was somehow set
 
+            app.logger.info(f"Final redirect_uri for Google Flow: {redirect_uri}")
 
-            app.logger.info(f"Using redirect_uri for Google Flow: {redirect_uri}")
             flow = Flow.from_client_config(
                 CLIENT_CONFIG,
                 scopes=SCOPES,
@@ -116,22 +108,26 @@ def get_google_flow():
             )
             return flow
         except Exception as e:
-            app.logger.error(f"Error creating Flow from client_config: {e}")
+            app.logger.error(f"Error creating Flow from client_config: {e}", exc_info=True)
             return None
-    # Fallback to InstalledAppFlow is generally NOT recommended for web apps
+
     elif os.path.exists(CREDENTIALS_PATH) and not CLIENT_CONFIG:
         try:
             redirect_uri = url_for('oauth2callback', _external=True)
-            # Apply same logic for insecure transport check if needed for this path
-            if os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1':
+            is_local_insecure = os.environ.get('OAUTHLIB_INSECURE_TRANSPORT') == '1'
+
+            if is_local_insecure:
                  if redirect_uri.startswith('https://'):
                      redirect_uri = redirect_uri.replace('https://', 'http://', 1)
                  os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
             else:
+                 if not redirect_uri.startswith('https://'):
+                     redirect_uri = redirect_uri.replace('http://', 'https://', 1) # Force https if needed
                  if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
                      del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
 
-            app.logger.warning("Using InstalledAppFlow based on credentials.json. This may not be suitable for production web servers.")
+            app.logger.warning("Using InstalledAppFlow based on credentials.json. This may not be suitable for production.")
+            app.logger.info(f"Final redirect_uri for InstalledAppFlow: {redirect_uri}")
             flow = InstalledAppFlow.from_client_secrets_file(
                 CREDENTIALS_PATH,
                 scopes=SCOPES,
@@ -139,7 +135,7 @@ def get_google_flow():
             )
             return flow
         except Exception as e:
-            app.logger.error(f"Error creating Flow from client_secrets_file {CREDENTIALS_PATH}: {e}")
+            app.logger.error(f"Error creating Flow from client_secrets_file {CREDENTIALS_PATH}: {e}", exc_info=True)
             return None
     else:
         app.logger.error("Cannot get Google Flow: No valid client configuration loaded.")
