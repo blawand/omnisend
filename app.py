@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, session, redirect, url_for
 import pandas as pd
 import io
 import os
@@ -8,71 +8,150 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow, Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import mimetypes
 import logging
 import re
+import json
+from werkzeug.wrappers import Response as WerkzeugResponse
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24) 
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 
 logging.basicConfig(level=logging.INFO)
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/userinfo.email',"https://www.googleapis.com/auth/gmail.readonly",'openid']
-TOKEN_PATH = 'token.json'
-CREDENTIALS_PATH = 'credentials.json'
+SCOPES = ['https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/userinfo.email',"https://www.googleapis.com/auth/gmail.readonly",'openid', 'profile']
+CREDENTIALS_PATH = 'credentials.json' 
+CLIENT_CONFIG = None
 
-def get_credentials():
+
+google_creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+if google_creds_json:
+    try:
+        CLIENT_CONFIG = json.loads(google_creds_json)
+        app.logger.info("Successfully loaded Google credentials from environment variable.")
+    except json.JSONDecodeError as e:
+        app.logger.error(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}. Falling back to file if available.")
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred loading credentials from environment: {e}")
+elif os.path.exists(CREDENTIALS_PATH):
+    app.logger.info(f"Using credentials file found at {CREDENTIALS_PATH}.")
+else:
+    app.logger.warning("Google credentials not found in environment variable GOOGLE_CREDENTIALS_JSON or as credentials.json file.")
+
+
+def get_google_flow():
+    if CLIENT_CONFIG:
+        flow = Flow.from_client_config(
+            CLIENT_CONFIG,
+            scopes=SCOPES,
+            redirect_uri=url_for('oauth2callback', _external=True)
+        )
+    elif os.path.exists(CREDENTIALS_PATH):
+        flow = InstalledAppFlow.from_client_secrets_file(
+            CREDENTIALS_PATH,
+            scopes=SCOPES,
+            redirect_uri=url_for('oauth2callback', _external=True)
+        )
+    else:
+        return None
+    return flow
+
+def get_credentials(require_redirect=False):
+    creds_json = session.get('credentials')
     creds = None
-    if os.path.exists(TOKEN_PATH):
+
+    if creds_json:
         try:
-            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+            creds_info = json.loads(creds_json)
+            creds = Credentials.from_authorized_user_info(creds_info, SCOPES)
         except Exception as e:
-            app.logger.error(f"Error loading token file: {e}. Deleting invalid token.")
-            if os.path.exists(TOKEN_PATH):
-                os.remove(TOKEN_PATH)
+            app.logger.error(f"Error loading credentials from session: {e}. Clearing invalid session credentials.")
+            session.pop('credentials', None)
             creds = None
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-                app.logger.info("Token refreshed successfully.")
+                session['credentials'] = creds.to_json()
+                app.logger.info("Token refreshed successfully and saved to session.")
+                return creds 
             except Exception as e:
                 app.logger.error(f"Error refreshing token: {e}. Token might be revoked or invalid.")
-                if os.path.exists(TOKEN_PATH):
-                    os.remove(TOKEN_PATH)
-                app.logger.info("Attempting new authorization flow.")
+                session.pop('credentials', None) 
                 creds = None 
-        
-        if not creds: 
-            if not os.path.exists(CREDENTIALS_PATH):
-                app.logger.error(f"Credentials file not found at {CREDENTIALS_PATH}")
-                return None
-            try:
-                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-                creds = flow.run_local_server(port=0, prompt='consent',
-                                             authorization_prompt_message='Please authorize this application to send emails on your behalf:')
-                app.logger.info("New authorization successful.")
-            except FileNotFoundError:
-                 app.logger.error(f"Credentials file not found at {CREDENTIALS_PATH}")
-                 return None
-            except Exception as e:
-                app.logger.error(f"Error during OAuth flow: {e}")
-                return None
-        
-        if creds:
-            try:
-                with open(TOKEN_PATH, 'w') as token:
-                    token.write(creds.to_json())
-                app.logger.info("Token saved successfully.")
-            except IOError as e:
-                app.logger.error(f"Error writing token file: {e}")
-                return None
+
+        if not creds:
+            if require_redirect:
+                flow = get_google_flow()
+                if not flow:
+                    app.logger.error("Cannot initiate OAuth flow: Google client configuration not found.")
+                    return None 
+
+                authorization_url, state = flow.authorization_url(
+                    access_type='offline',
+                    prompt='consent',
+                    include_granted_scopes='true'
+                )
+                session['oauth_state'] = state
+                app.logger.info(f"Redirecting user to Google for authorization. State: {state}")
+                return redirect(authorization_url)
+            else:
+                 app.logger.info("Credentials not found or invalid, and redirect not required by caller.")
+                 return None 
+    
     return creds
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    state = session.get('oauth_state')
+    
+    if not state or state != request.args.get('state'):
+        app.logger.error("OAuth callback state mismatch.")
+        return jsonify({"success": False, "error": "Invalid state parameter."}), 400
+
+    session.pop('oauth_state', None) 
+
+    flow = get_google_flow()
+    if not flow:
+       app.logger.error("OAuth callback cannot proceed: Google client configuration not found.")
+       return jsonify({"success": False, "error": "Server configuration error."}), 500
+
+    try:
+        authorization_response = request.url
+        
+        if 'http://' in authorization_response and not app.debug:
+             authorization_response = authorization_response.replace('http://', 'https://', 1)
+             app.logger.warning("Replaced http with https in authorization response URL for production.")
+
+        flow.fetch_token(authorization_response=authorization_response)
+        credentials = flow.credentials
+        session['credentials'] = credentials.to_json()
+        app.logger.info("OAuth flow completed successfully. Credentials stored in session.")
+
+        try:
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            session['user_email'] = user_info.get('email')
+            app.logger.info(f"User authenticated: {session.get('user_email')}")
+        except Exception as e:
+             app.logger.error(f"Failed to fetch user info after OAuth: {e}")
+
+        return redirect(url_for('index'))
+
+    except Exception as e:
+        app.logger.error(f"Error during OAuth token fetch: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": f"Failed to fetch OAuth token: {str(e)}"}), 400
 
 def create_message(sender, to, subject, body_html, attachments=None):
     message = MIMEMultipart('related') 
@@ -128,37 +207,64 @@ def is_valid_email(email):
 
 @app.route('/', methods=['GET'])
 def index():
-    return render_template('index.html')
+    creds_or_redirect = get_credentials(require_redirect=True)
+
+    if isinstance(creds_or_redirect, WerkzeugResponse):
+        return creds_or_redirect
+
+    if creds_or_redirect is None and not (CLIENT_CONFIG or os.path.exists(CREDENTIALS_PATH)):
+         app.logger.error("Cannot render index: Google client configuration not found.")
+         return "Server configuration error: Google API credentials are not set up correctly. Please contact the administrator.", 500
+
+    if creds_or_redirect is None:
+        app.logger.warning("Index route called without credentials, redirect should have happened. Check OAuth flow.")
+        return "Authentication error. Please try reloading.", 500
+
+    user_email = session.get('user_email', 'Unknown User')
+    return render_template('index.html', user_email=user_email)
+
 
 @app.route('/send-emails', methods=['POST'])
 def send_emails():
-    creds = get_credentials()
+    creds = get_credentials(require_redirect=False) 
     if not creds:
-        app.logger.error("Authentication failed in /send-emails endpoint.")
-        error_message = "Authentication failed. Could not get credentials."
-        if not os.path.exists(CREDENTIALS_PATH):
-            error_message += f" Missing credentials file ({CREDENTIALS_PATH}). Please ensure it exists."
-        else:
-             error_message += " Please try reloading the page to re-authenticate, or check server logs."
-        return jsonify({"success": False, "error": error_message}), 401
+        app.logger.error("Authentication failed in /send-emails endpoint (credentials missing or expired).")
+        return jsonify({"success": False, "error": "Authentication required or expired. Please reload the page to sign in again.", "statusCode": 401}), 401
 
     try:
         service = build('gmail', 'v1', credentials=creds)
-        profile = service.users().getProfile(userId='me').execute()
-        sender_email = profile['emailAddress']
-        app.logger.info(f"Authenticated as {sender_email}")
+        sender_email = session.get('user_email')
+        if not sender_email: 
+            try:
+                profile = service.users().getProfile(userId='me').execute()
+                sender_email = profile['emailAddress']
+                session['user_email'] = sender_email 
+                app.logger.info(f"Re-fetched sender email: {sender_email}")
+            except HttpError as profile_err:
+                 app.logger.error(f"Failed to get Gmail profile even with credentials: {profile_err}")
+                 if profile_err.resp.status in [401, 403]:
+                     session.pop('credentials', None)
+                     session.pop('user_email', None)
+                     return jsonify({"success": False, "error": f"Gmail authentication error ({profile_err.resp.status}). Your session may have expired. Please reload the page.", "statusCode": 401}), 401
+                 return jsonify({"success": False, "error": f"Failed to verify sender identity: {profile_err}", "statusCode": 500}), 500
+            except Exception as profile_e:
+                 app.logger.error(f"Unexpected error fetching profile: {profile_e}")
+                 return jsonify({"success": False, "error": f"Unexpected error verifying sender: {profile_e}", "statusCode": 500}), 500
+        
+        app.logger.info(f"Authenticated as {sender_email} for sending.")
+
     except HttpError as e:
-         app.logger.error(f"Failed to get Gmail profile: {e}")
+         app.logger.error(f"Failed to build Gmail service or get profile: {e}")
          if e.resp.status == 401 or e.resp.status == 403:
-             if os.path.exists(TOKEN_PATH):
-                 os.remove(TOKEN_PATH)
-             return jsonify({"success": False, "error": f"Gmail authentication error ({e.resp.status}). Please reload the page and re-authenticate."}), 401
-         return jsonify({"success": False, "error": f"Failed to connect to Gmail service: {e}"}), 500
+             session.pop('credentials', None)
+             session.pop('user_email', None)
+             return jsonify({"success": False, "error": f"Gmail authentication error ({e.resp.status}). Please reload the page and re-authenticate.", "statusCode": 401}), 401
+         return jsonify({"success": False, "error": f"Failed to connect to Gmail service: {e}", "statusCode": 500}), 500
     except Exception as e:
          app.logger.error(f"Unexpected error building Gmail service: {e}")
-         return jsonify({"success": False, "error": f"Unexpected error connecting to Gmail: {e}"}), 500
+         return jsonify({"success": False, "error": f"Unexpected error connecting to Gmail: {e}", "statusCode": 500}), 500
 
-    mode = request.form.get('mode', 'csv') # Default to csv mode
+    mode = request.form.get('mode', 'csv') 
     subject_template = request.form.get('subject_template', '')
     body_template = request.form.get('body_template', '')
     attachments = request.files.getlist('attachments')
@@ -234,6 +340,12 @@ def send_emails():
                     reason = f"Gmail API Error: {error_details}"
                     results.append({"row": row_num, "status": "failed", "reason": reason, "recipient": recipient_email or f"Row {row_num} processing"})
                     app.logger.error(f"Failed sending for row {row_num} (recipient: {recipient_email}): {reason}")
+                    if http_err.resp.status in [401, 403]: 
+                         session.pop('credentials', None)
+                         session.pop('user_email', None)
+                         app.logger.error("Critical auth error during send loop. Aborting.")
+                         results.append({"row": "N/A", "status": "aborted", "reason": "Authentication failed mid-process. Reload page.", "recipient": "Process Halted"})
+                         break 
                 except Exception as e:
                     error_details = str(e)
                     reason = f"Unexpected Error: {error_details}"
@@ -260,7 +372,6 @@ def send_emails():
                      continue
                  
                  try:
-                     
                      subject = subject_template
                      body = body_template
                      placeholders = re.findall(r'\{.*?\}', subject + body)
@@ -277,6 +388,12 @@ def send_emails():
                     reason = f"Gmail API Error: {error_details}"
                     results.append({"row": recipient_num, "status": "failed", "reason": reason, "recipient": recipient_email})
                     app.logger.error(f"Failed sending to manual recipient {recipient_email} (#{recipient_num}): {reason}")
+                    if http_err.resp.status in [401, 403]: 
+                         session.pop('credentials', None)
+                         session.pop('user_email', None)
+                         app.logger.error("Critical auth error during send loop. Aborting.")
+                         results.append({"row": "N/A", "status": "aborted", "reason": "Authentication failed mid-process. Reload page.", "recipient": "Process Halted"})
+                         break 
                  except Exception as e:
                     error_details = str(e)
                     reason = f"Unexpected Error: {error_details}"
@@ -291,8 +408,11 @@ def send_emails():
         success_count = sum(1 for r in results if r['status'] == 'sent')
         skipped_count = sum(1 for r in results if r['status'] == 'skipped')
         failed_count = sum(1 for r in results if r['status'] == 'failed')
-        
-        summary_message = f"Process completed for {total_recipients} target(s) ({mode} mode). Sent: {success_count}, Skipped: {skipped_count}, Failed: {failed_count}."
+        aborted_count = sum(1 for r in results if r['status'] == 'aborted')
+
+        summary_message = f"Process completed ({mode} mode). Target(s): {total_recipients}. Sent: {success_count}, Skipped: {skipped_count}, Failed: {failed_count}."
+        if aborted_count > 0:
+             summary_message += f" Aborted: {aborted_count} due to critical error (likely auth)."
         app.logger.info(summary_message)
 
         return jsonify({"success": True, "message": summary_message, "results": results})
@@ -307,4 +427,7 @@ def send_emails():
         return jsonify({"success": False, "error": f"An unexpected server error occurred: {str(e)}"}), 500
 
 if __name__ == '__main__':
+    if not (CLIENT_CONFIG or os.path.exists(CREDENTIALS_PATH)):
+         print("ERROR: Google API credentials are not configured.")
+         print("Set the GOOGLE_CREDENTIALS_JSON environment variable or place credentials.json in the root directory.")
     app.run(debug=True, port=5000)
