@@ -21,7 +21,7 @@ app.secret_key = os.urandom(24)
 
 logging.basicConfig(level=logging.INFO)
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+SCOPES = ['https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/userinfo.email',"https://www.googleapis.com/auth/gmail.readonly",'openid']
 TOKEN_PATH = 'token.json'
 CREDENTIALS_PATH = 'credentials.json'
 
