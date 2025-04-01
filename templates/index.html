@@ -28,6 +28,9 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='styles.css') }}"
     />
+    <script>
+      window.appLimits = JSON.parse("{{ limits | tojson | safe }}");
+    </script>
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
@@ -47,6 +50,13 @@
           <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item">
+              <span class="navbar-text text-white-50 small">
+                Logged in as: {{ user_email }}
+              </span>
+            </li>
+          </ul>
           <ul class="navbar-nav ms-auto">
             <li class="nav-item">
               <button
@@ -55,7 +65,7 @@
                 data-bs-toggle="modal"
                 data-bs-target="#instructionsModal"
               >
-                <i class="bi bi-info-circle me-1"></i>How to Use
+                <i class="bi bi-info-circle me-1"></i>How to Use & Limits
               </button>
             </li>
           </ul>
@@ -138,7 +148,8 @@
                       <div class="form-text">
                         Required for CSV mode. Must have headers in the first
                         row (e.g., Email, FirstName). UTF-8 encoding
-                        recommended.
+                        recommended. Max {{ limits.MAX_CSV_RECIPIENTS }} rows
+                        will be processed.
                       </div>
                     </div>
                     <div id="csv-headers-section" class="mb-3 d-none">
@@ -223,9 +234,16 @@ test1@example.com, test2@example.com
 test3@example.com test4@example.com"
                       ></textarea>
                       <div class="form-text">
-                        Required for Manual mode. The same email (subject/body)
-                        will be sent to all recipients listed here. Placeholders
-                        will NOT be replaced.
+                        Required for Manual mode. Max {{
+                        limits.MAX_MANUAL_RECIPIENTS }} recipients allowed. The
+                        same email (subject/body) will be sent to all recipients
+                        listed here. Placeholders will NOT be replaced.
+                      </div>
+                      <div
+                        id="manual-recipient-count"
+                        class="form-text text-muted mt-1"
+                      >
+                        Recipients: 0 / {{ limits.MAX_MANUAL_RECIPIENTS }}
                       </div>
                     </div>
                   </div>
@@ -254,6 +272,7 @@ test3@example.com test4@example.com"
                       name="subject_template"
                       placeholder="e.g., Welcome {FirstName}! Special offer inside..."
                       required
+                      maxlength="255"
                     />
                     <button
                       class="btn btn-outline-secondary placeholder-inserter-btn"
@@ -267,7 +286,7 @@ test3@example.com test4@example.com"
                   </div>
                   <div class="form-text">
                     Required. Use placeholders like {FirstName} in CSV mode.
-                    They won't be replaced in Manual mode.
+                    They won't be replaced in Manual mode. Max 255 characters.
                   </div>
                 </div>
 
@@ -277,7 +296,7 @@ test3@example.com test4@example.com"
                   >
                   <div id="editor-wrapper">
                     <div id="custom-toolbar"></div>
-                    <div id="editor-container"></div>
+                    <div id="editor-container" style="min-height: 150px"></div>
                   </div>
                   <input
                     type="hidden"
@@ -303,10 +322,15 @@ test3@example.com test4@example.com"
                     multiple
                   />
                   <div class="form-text">
-                    These files will be attached to every email sent (both
-                    modes). Max size limits depend on Gmail.
+                    Max {{ limits.MAX_ATTACHMENTS_PER_EMAIL }} files. Total size
+                    must not exceed {{ limits.MAX_TOTAL_ATTACHMENT_SIZE_MB }}
+                    MB. Gmail may impose stricter individual file size limits.
                   </div>
                   <div id="attachment-list" class="mt-2"></div>
+                  <div
+                    id="attachment-error"
+                    class="text-danger small mt-1"
+                  ></div>
                 </div>
               </div>
             </div>
@@ -332,6 +356,7 @@ test3@example.com test4@example.com"
                     type="submit"
                     class="btn btn-primary px-4"
                     id="send-button"
+                    disabled
                   >
                     <span
                       class="spinner-border spinner-border-sm me-1"
@@ -344,7 +369,7 @@ test3@example.com test4@example.com"
                 </div>
                 <div class="form-text mt-1">
                   Preview uses first CSV row (CSV mode) or shows static content
-                  (Manual mode).
+                  (Manual mode). Sending emails is subject to rate limits.
                 </div>
 
                 <div id="preview-area" class="mt-4 d-none">
@@ -359,6 +384,12 @@ test3@example.com test4@example.com"
                   </h6>
                   <div class="card border-secondary mt-2">
                     <div class="card-body preview-content p-3">
+                      <p class="mb-1">
+                        <strong>From:</strong>
+                        <span class="text-muted font-monospace small"
+                          >{{ user_email }}</span
+                        >
+                      </p>
                       <p class="mb-1">
                         <strong>To:</strong>
                         <span
@@ -404,7 +435,7 @@ test3@example.com test4@example.com"
           <div class="modal-header">
             <h5 class="modal-title" id="instructionsModalLabel">
               <i class="bi bi-info-circle-fill me-2 text-primary"></i>How to Use
-              OmniSend
+              OmniSend & Limits
             </h5>
             <button
               type="button"
@@ -505,12 +536,45 @@ test3@example.com test4@example.com"
               </li>
             </ol>
             <hr />
+            <h6>Usage Limits:</h6>
+            <ul>
+              <li>
+                <strong>Rate Limit:</strong> Sending is rate-limited to prevent
+                abuse. If you hit the limit, please wait before trying again.
+              </li>
+              <li>
+                <strong>CSV Rows:</strong> Max
+                <strong>{{ limits.MAX_CSV_RECIPIENTS }}</strong> rows processed
+                per CSV file.
+              </li>
+              <li>
+                <strong>Manual Recipients:</strong> Max
+                <strong>{{ limits.MAX_MANUAL_RECIPIENTS }}</strong> recipients
+                per send.
+              </li>
+              <li>
+                <strong>Attachments:</strong> Max
+                <strong>{{ limits.MAX_ATTACHMENTS_PER_EMAIL }}</strong> files
+                per email.
+              </li>
+              <li>
+                <strong>Attachment Size:</strong> Total size of all attachments
+                must not exceed
+                <strong>{{ limits.MAX_TOTAL_ATTACHMENT_SIZE_MB }} MB</strong>.
+              </li>
+              <li>
+                <strong>Gmail Limits:</strong> Google also imposes its own
+                sending limits (e.g., daily quotas) which apply separately.
+              </li>
+            </ul>
+            <hr />
             <h6>General Notes:</h6>
             <ul>
               <li>
                 <strong>Authentication:</strong> Uses Google OAuth2 to send
                 emails via your Gmail account. Your Google password is never
-                stored or seen by this app.
+                stored or seen by this app. You may need to re-authenticate if
+                your session expires.
               </li>
               <li>
                 <strong>Placeholders (CSV Mode):</strong> Must be enclosed in
@@ -518,13 +582,16 @@ test3@example.com test4@example.com"
                 (case-sensitive).
               </li>
               <li>
-                <strong>Rate Limits:</strong> Gmail has sending limits. Sending
-                large batches too quickly may result in temporary blocks or
-                errors.
+                <strong>Preview Accuracy:</strong> The preview shows content
+                based on available data (first CSV row or manual input). Final
+                emails may vary slightly based on Gmail rendering. Always review
+                the preview carefully.
               </li>
               <li>
                 <strong>Error Handling:</strong> Check the status messages and
-                results list after sending for any issues.
+                results list after sending for any issues. Skipped or failed
+                items often indicate data problems (invalid email, missing
+                placeholders) or temporary API issues.
               </li>
             </ul>
           </div>
@@ -543,7 +610,7 @@ test3@example.com test4@example.com"
 
     <footer class="footer mt-auto py-3 bg-light border-top">
       <div class="container text-center">
-        <span class="text-muted small">OmniSend v2.0</span>
+        <span class="text-muted small">OmniSend v2.1</span>
       </div>
     </footer>
 
