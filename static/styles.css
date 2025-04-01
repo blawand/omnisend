@@ -24,6 +24,13 @@ body {
   font-size: 15px;
   line-height: 1.6;
   color: var(--bs-body-color);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1; /* Allow main content to grow */
 }
 
 h1,
@@ -61,10 +68,12 @@ a:hover {
   font-size: 1.6rem;
   vertical-align: middle;
   margin-top: -4px;
-  color: #ffffff; /* White icon on primary bg */
+  color: var(--bs-primary); /* Use primary color for icon on light bg */
 }
-
-/* --- Tabs --- */
+.navbar.navbar-dark .navbar-brand i {
+  color: #ffffff; /* Keep white icon on dark bg (app page) */
+}
+/* --- Tabs (App Page) --- */
 .nav-pills .nav-link {
   border-radius: var(--bs-border-radius);
   font-weight: 500;
@@ -83,7 +92,7 @@ a:hover {
   background-color: #dde2e7;
 }
 
-/* --- Cards --- */
+/* --- Cards (App Page) --- */
 .card {
   border: none;
   border-radius: 0.5rem;
@@ -113,7 +122,7 @@ a:hover {
   padding: 1.5rem;
 }
 
-/* --- Form Elements --- */
+/* --- Form Elements (App Page) --- */
 .form-label {
   font-weight: 500;
   color: #495057;
@@ -136,6 +145,10 @@ a:hover {
 textarea.form-control {
   min-height: 120px;
 }
+.form-control.is-invalid {
+  /* Style invalid textarea */
+  border-color: var(--bs-danger);
+}
 .form-text {
   font-size: 0.85em;
   color: #6c757d;
@@ -151,7 +164,7 @@ textarea.form-control {
   box-shadow: none; /* Prevent double shadow */
 }
 
-/* --- CSV Headers --- */
+/* --- CSV Headers (App Page) --- */
 #csv-headers-section {
   margin-top: 1rem;
 }
@@ -174,7 +187,7 @@ textarea.form-control {
   background-color: #198754 !important; /* Ensure override */
 }
 
-/* --- Quill Editor --- */
+/* --- Quill Editor (App Page) --- */
 #editor-wrapper {
   border: 1px solid var(--bs-border-color);
   border-radius: var(--bs-border-radius);
@@ -216,7 +229,7 @@ textarea.form-control {
   padding: 3px 5px;
 }
 .ql-insertPlaceholder i {
-  font-size: 1.2em;
+  font-size: 1em; /* Match other icons */
   vertical-align: middle;
 }
 .ql-insertPlaceholder[disabled] {
@@ -274,7 +287,7 @@ textarea.form-control {
   margin-top: -1px;
 }
 
-/* --- Preview Area --- */
+/* --- Preview Area (App Page) --- */
 #preview-area {
   transition: opacity 0.3s ease-in-out;
 }
@@ -316,7 +329,7 @@ textarea.form-control {
   padding-top: 0.5rem;
 }
 
-/* --- Status Messages & Results --- */
+/* --- Status Messages & Results (App Page) --- */
 #status-message .alert {
   border-radius: var(--bs-border-radius);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -341,16 +354,19 @@ textarea.form-control {
 #status-message .table {
   margin-bottom: 0; /* Remove margin if table is last element */
 }
+#status-message .table thead.sticky-top {
+  top: -1px; /* Ensure sticky header doesn't overlap container border */
+}
+
 #status-message .table thead {
   background-color: rgba(0, 0, 0, 0.03); /* Very light header */
 }
-#status-message .btn-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
+#status-message .table-responsive {
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
 }
 
-/* --- Modal --- */
+/* --- Modal (App Page) --- */
 .modal-header {
   background-color: var(--bs-light);
   border-bottom-color: var(--bs-border-color);
@@ -382,13 +398,33 @@ textarea.form-control {
   padding: 0.2em 0.4em;
   background-color: #e9ecef;
   border-radius: 0.2rem;
+  color: #d63384; /* Bootstrap code color */
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+.modal-body .btn-xs {
+  /* Style example button in modal */
+  pointer-events: none; /* Make it non-interactive */
 }
 
 /* --- Footer --- */
-.footer {
+.footer, /* App page footer */
+.footer-landing /* Landing page footer */ {
   font-size: 0.85em;
   color: #6c757d;
   background-color: #e9ecef; /* Slightly darker footer */
+  padding: 1.5rem 0; /* Consistent padding */
+  margin-top: auto; /* Push footer to bottom */
+}
+.footer a,
+.footer-landing a {
+  color: #495057;
+  text-decoration: none;
+}
+.footer a:hover,
+.footer-landing a:hover {
+  color: var(--bs-primary);
+  text-decoration: underline;
 }
 
 /* --- Utility --- */
@@ -396,10 +432,115 @@ textarea.form-control {
   display: none !important; /* Ensure visibility toggle works */
 }
 
+/* --- Landing Page Specific Styles --- */
+.hero-section {
+  background: linear-gradient(
+      rgba(var(--bs-primary-rgb), 0.8),
+      rgba(var(--bs-primary-rgb), 0.9)
+    ),
+    url("https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=2070"); /* Generic tech/collaboration background */
+  background-size: cover;
+  background-position: center;
+  color: white;
+  padding: 6rem 1rem; /* Add horizontal padding */
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column; /* Stack elements vertically */
+}
+.hero-section h1 {
+  font-size: clamp(2.5rem, 6vw, 3.5rem); /* Responsive font size */
+  font-weight: 700;
+  color: white;
+  margin-bottom: 1rem;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+}
+.hero-section p.lead {
+  font-size: clamp(1.1rem, 3vw, 1.4rem); /* Responsive font size */
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+  max-width: 700px;
+  margin: 0 auto 2rem auto;
+}
+.hero-section .btn-launch {
+  font-size: clamp(1rem, 2.5vw, 1.2rem); /* Responsive font size */
+  padding: 0.8rem 2.5rem;
+  background-color: #ffffff;
+  color: var(--bs-primary);
+  font-weight: 600;
+  border: none;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+.hero-section .btn-launch:hover {
+  background-color: #f8f9fa;
+  color: rgb(var(--bs-primary-rgb), 0.8);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+}
+.features-section {
+  padding: 4rem 0;
+}
+.feature-card {
+  background-color: #fff;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--bs-card-border-color);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  height: 100%; /* Ensure cards have same height */
+  display: flex;
+  flex-direction: column;
+}
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1);
+}
+.feature-icon {
+  font-size: 3rem;
+  color: var(--bs-primary);
+  margin-bottom: 1.5rem;
+  display: inline-block;
+  line-height: 1;
+}
+.feature-card h3 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+.feature-card p {
+  color: var(--bs-secondary);
+  font-size: 0.95rem;
+  flex-grow: 1; /* Allow paragraph to take up space */
+}
+.security-section {
+  background-color: var(--bs-light);
+  padding: 3rem 0;
+  text-align: center;
+}
+.security-section h2 {
+  margin-bottom: 1.5rem;
+}
+.security-section p {
+  max-width: 700px; /* Wider text */
+  margin: 0 auto 1rem auto;
+  color: var(--bs-secondary);
+  line-height: 1.7;
+}
+.security-icon {
+  font-size: 2rem;
+  color: var(--bs-primary);
+  margin: 0 0.5rem;
+}
+
 /* --- Responsive Adjustments --- */
 @media (max-width: 768px) {
   .nav-pills .nav-link {
     margin-bottom: 5px; /* Stack tabs vertically on small screens */
+    margin-left: 0;
+    margin-right: 0;
   }
   .card-body {
     padding: 1rem; /* Reduce padding on small screens */
@@ -407,4 +548,69 @@ textarea.form-control {
   #editor-container {
     height: 250px; /* Reduce editor height */
   }
+  .hero-section {
+    padding: 4rem 1rem; /* Adjust padding */
+  }
+}
+
+/* --- Privacy Policy Page Styles --- */
+.privacy-policy-content {
+  line-height: 1.7; /* Improve readability */
+}
+
+.privacy-policy-content h1 {
+  font-size: 2.5rem;
+  color: var(--bs-primary);
+  font-weight: 700;
+}
+
+.privacy-policy-content h2 {
+  font-size: 1.8rem;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--bs-primary);
+  color: var(--bs-dark);
+}
+
+.privacy-policy-content h3 {
+  font-size: 1.4rem;
+  margin-top: 2rem;
+  margin-bottom: 0.8rem;
+  color: rgb(var(--bs-primary-rgb), 0.9);
+}
+
+.privacy-policy-content h4 {
+  font-size: 1.1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.6rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.privacy-policy-content p {
+  margin-bottom: 1.1rem;
+  color: var(--bs-body-color);
+}
+
+.privacy-policy-content ul {
+  padding-left: 2rem; /* Indent lists */
+  margin-bottom: 1.1rem;
+}
+
+.privacy-policy-content li {
+  margin-bottom: 0.8rem;
+}
+
+.privacy-policy-content li > p {
+  margin-bottom: 0.3rem; /* Reduce space within list item paragraphs */
+}
+
+.privacy-policy-content strong {
+  font-weight: 600;
+  color: var(--bs-dark);
+}
+
+.privacy-policy-content a {
+  word-break: break-all; /* Break long URLs */
 }
