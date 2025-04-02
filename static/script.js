@@ -10,7 +10,8 @@ const appLimits = window.appLimits || {
   MAX_TOTAL_ATTACHMENT_SIZE_MB: 15,
   MAX_ATTACHMENTS_PER_EMAIL: 5,
   MAX_MANUAL_RECIPIENTS: 100,
-  MAX_CSV_RECIPIENTS: 1000, // Primarily backend, used for warnings
+  MAX_CSV_RECIPIENTS: 1000,
+  MAX_BODY_LENGTH: 5000,
 };
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES =
   appLimits.MAX_TOTAL_ATTACHMENT_SIZE_MB * 1024 * 1024;
@@ -52,7 +53,6 @@ function initializeQuill() {
       : "pointer";
     placeholderButton.style.opacity = placeholderButton.disabled ? "0.5" : "1";
   }
-  // updatePlaceholderInsertersState() // Called later in DOMContentLoaded
 }
 
 function insertPlaceholderHandler() {
@@ -112,12 +112,14 @@ function handleCsvFileSelect(event) {
   const headersSection = document.getElementById("csv-headers-section");
   const headersContainer = document.getElementById("headers-container");
 
-  resetCsvState();
+  resetCsvState(); // Reset previous state first
 
   if (!file) {
-    headersContainer.innerHTML =
-      '<span class="text-muted small">No file selected.</span>';
-    headersSection.classList.add("d-none");
+    // No file selected or selection cancelled
+    if (headersContainer)
+      headersContainer.innerHTML =
+        '<span class="text-muted small">Upload a valid CSV to see available placeholders.</span>';
+    if (headersSection) headersSection.classList.add("d-none"); // Hide section if no file selected
     checkFormValidityAndButtonStates();
     return;
   }
@@ -128,38 +130,40 @@ function handleCsvFileSelect(event) {
     if (csvTab) {
       const tab = new bootstrap.Tab(csvTab);
       tab.show();
-      // handleModeChange will be triggered by the tab switch event
+      // handleModeChange will update state via event
     } else {
-      currentMode = "csv"; // Fallback if tab doesn't exist
+      // Fallback if tab system fails
+      currentMode = "csv";
       document.getElementById("current-mode").value = currentMode;
-      updatePlaceholderInsertersState(); // Explicitly update state if no tab event
+      updatePlaceholderInsertersState(); // Manually update if no tab event
     }
   }
 
-  // Basic check for potentially huge files client-side
+  // Basic client-side size check
   if (file.size > 50 * 1024 * 1024) {
-    // Warn for files > 50MB
+    // 50MB Warning
     displayStatus(
-      `Warning: CSV file is very large (${(file.size / (1024 * 1024)).toFixed(
+      `Warning: CSV file is large (${(file.size / (1024 * 1024)).toFixed(
         1
-      )} MB). Processing may be slow or fail due to server limits. The server will process max ${
+      )} MB). Processing might be slow or fail. Max ${
         appLimits.MAX_CSV_RECIPIENTS
-      } rows.`,
+      } rows processed.`,
       "warning"
     );
   }
 
   csvFileHandle = file;
-  headersContainer.innerHTML =
-    '<span class="text-muted small">Parsing CSV... <div class="spinner-border spinner-border-sm ms-1" role="status"><span class="visually-hidden">Loading...</span></div></span>';
-  headersSection.classList.remove("d-none");
+  if (headersContainer)
+    headersContainer.innerHTML =
+      '<span class="text-muted small">Parsing CSV... <div class="spinner-border spinner-border-sm ms-1" role="status"><span class="visually-hidden">Loading...</span></div></span>';
+  // Keep headers section hidden until parsing is successful
 
   Papa.parse(file, {
     header: true,
     skipEmptyLines: "greedy",
-    preview: 2, // Get header row + first data row for preview
-    encoding: "UTF-8", // Assume UTF-8, handle errors if not
-    transformHeader: (header) => header.trim(), // Trim whitespace from headers
+    preview: 2,
+    encoding: "UTF-8",
+    transformHeader: (header) => header.trim(),
     complete: function (results) {
       if (results.errors.length > 0) {
         console.error("CSV Parsing Errors:", results.errors);
@@ -167,35 +171,36 @@ function handleCsvFileSelect(event) {
           .map((e) => `Row ${e.row}: ${e.message}`)
           .join("<br>");
         displayStatus(
-          `<strong>Error parsing CSV:</strong><br>${errorMsg}.<br>Please check file format, UTF-8 encoding, and ensure headers are in the first row.`,
+          `<strong>Error parsing CSV:</strong><br>${errorMsg}.<br>Check format, UTF-8 encoding, and headers.`,
           "danger"
         );
-        headersContainer.innerHTML =
-          '<span class="text-danger small">Error parsing CSV.</span>';
-        csvFileHandle = null; // Clear handle on error
-        headersSection.classList.add("d-none");
-        resetCsvState(); // Resets headers and buttons
+        if (headersContainer)
+          headersContainer.innerHTML =
+            '<span class="text-danger small">Error parsing CSV.</span>';
+        if (headersSection) headersSection.classList.remove("d-none"); // Show section to display error text
+        csvFileHandle = null;
+        resetCsvState(); // Reset headers/buttons
         return;
       }
 
       if (!results.meta.fields || results.meta.fields.length === 0) {
         displayStatus(
-          "CSV file seems to be empty or does not contain valid headers in the first row.",
+          "CSV file seems empty or lacks valid headers in the first row.",
           "warning"
         );
-        headersContainer.innerHTML =
-          '<span class="text-warning small">No headers found.</span>';
+        if (headersContainer)
+          headersContainer.innerHTML =
+            '<span class="text-warning small">No headers found.</span>';
+        if (headersSection) headersSection.classList.remove("d-none"); // Show section to display warning
         csvFileHandle = null;
-        headersSection.classList.add("d-none");
         resetCsvState();
         return;
       }
 
-      csvHeaders = results.meta.fields.filter((h) => h && h.trim() !== ""); // Filter out empty headers
-      // Ensure csvFirstRow is an object, even if empty, if data exists
+      csvHeaders = results.meta.fields.filter((h) => h && h.trim() !== "");
       csvFirstRow = results.data.length > 0 ? results.data[0] || {} : null;
 
-      headersContainer.innerHTML = "";
+      if (headersContainer) headersContainer.innerHTML = ""; // Clear parsing message
       if (csvHeaders.length > 0) {
         csvHeaders.forEach((header) => {
           const badge = document.createElement("span");
@@ -204,27 +209,15 @@ function handleCsvFileSelect(event) {
           badge.textContent = header;
           badge.title = `Click to copy placeholder {${header}}`;
           badge.style.cursor = "pointer";
-          badge.onclick = () => {
-            navigator.clipboard
-              .writeText(`{${header}}`)
-              .then(() => {
-                const originalText = badge.textContent;
-                badge.textContent = "Copied!";
-                badge.classList.add("bg-success");
-                setTimeout(() => {
-                  badge.textContent = originalText;
-                  badge.classList.remove("bg-success");
-                }, 1000);
-              })
-              .catch((err) => console.error("Copy failed: ", err));
-          };
-          headersContainer.appendChild(badge);
+          badge.onclick = () => copyPlaceholder(badge, header);
+          if (headersContainer) headersContainer.appendChild(badge);
         });
+        if (headersSection) headersSection.classList.remove("d-none"); // Show section only if headers found
       } else {
-        headersContainer.innerHTML =
-          '<span class="text-warning small">No valid headers detected.</span>';
-        // No need to hide section, just show message
-        // headersSection.classList.add("d-none");
+        if (headersContainer)
+          headersContainer.innerHTML =
+            '<span class="text-warning small">No valid headers detected.</span>';
+        if (headersSection) headersSection.classList.remove("d-none"); // Show section to display warning
       }
 
       updatePlaceholderInsertersState();
@@ -239,30 +232,46 @@ function handleCsvFileSelect(event) {
     error: function (error, file) {
       console.error("CSV Parsing Failed:", error);
       displayStatus(
-        `<strong>Failed to parse CSV file:</strong> ${error}. Check file encoding (UTF-8 recommended) and format.`,
+        `<strong>Failed to parse CSV:</strong> ${error}. Check file encoding (UTF-8 recommended) and format.`,
         "danger"
       );
-      headersContainer.innerHTML =
-        '<span class="text-danger small">Failed to parse CSV.</span>';
+      if (headersContainer)
+        headersContainer.innerHTML =
+          '<span class="text-danger small">Failed to parse CSV.</span>';
+      if (headersSection) headersSection.classList.remove("d-none"); // Show section to display error
       csvFileHandle = null;
-      // Keep section visible to show error message
-      // headersSection.classList.add("d-none");
-      resetCsvState(); // Resets headers and buttons
+      resetCsvState();
     },
   });
+}
+
+function copyPlaceholder(badgeElement, headerText) {
+  navigator.clipboard
+    .writeText(`{${headerText}}`)
+    .then(() => {
+      const originalText = badgeElement.textContent;
+      badgeElement.textContent = "Copied!";
+      badgeElement.classList.add("bg-success");
+      setTimeout(() => {
+        badgeElement.textContent = originalText;
+        badgeElement.classList.remove("bg-success");
+      }, 1000);
+    })
+    .catch((err) => console.error("Copy failed: ", err));
 }
 
 function resetCsvState() {
   csvHeaders = [];
   csvFirstRow = null;
-  // Don't reset csvFileHandle here, only on new selection or error
+  // csvFileHandle is only reset on error or new selection
 
   const headersSection = document.getElementById("csv-headers-section");
   const headersContainer = document.getElementById("headers-container");
-  // Don't hide section, just update text if no file selected yet
-  if (headersContainer && !csvFileHandle)
+
+  if (headersSection) headersSection.classList.add("d-none"); // Hide headers section on reset
+  if (headersContainer)
     headersContainer.innerHTML =
-      '<span class="text-muted small">Upload a CSV to see headers.</span>';
+      '<span class="text-muted small">Upload a valid CSV to see available placeholders.</span>';
 
   updatePlaceholderInsertersState();
   checkFormValidityAndButtonStates();
@@ -272,41 +281,45 @@ function resetCsvState() {
 function resetPreview() {
   const previewArea = document.getElementById("preview-area");
   if (previewArea) previewArea.classList.add("d-none");
-  document.getElementById("preview-to").textContent = "";
-  document.getElementById("preview-subject").textContent = "";
-  document.getElementById("preview-body").innerHTML = "";
-  document.getElementById("preview-context").textContent = "";
-  document.getElementById("preview-attachments").innerHTML = "";
+  const previewTo = document.getElementById("preview-to");
+  const previewSubject = document.getElementById("preview-subject");
+  const previewBody = document.getElementById("preview-body");
+  const previewContext = document.getElementById("preview-context");
+  const previewAttachments = document.getElementById("preview-attachments");
+
+  if (previewTo) previewTo.textContent = "";
+  if (previewSubject) previewSubject.textContent = "";
+  if (previewBody) previewBody.innerHTML = "";
+  if (previewContext) previewContext.textContent = "";
+  if (previewAttachments) previewAttachments.innerHTML = "";
 }
 
 function checkFormValidityAndButtonStates() {
   const previewButton = document.getElementById("preview-button");
   const sendButton = document.getElementById("send-button");
-  if (!previewButton || !sendButton) return; // Exit if buttons not found (e.g., on landing page)
+  if (!previewButton || !sendButton) return;
 
   let isPreviewValid = false;
   let isSendValid = false;
 
   const subjectFilled =
     document.getElementById("subject-template").value.trim() !== "";
-  const bodyFilled = quill && quill.getLength() > 1; // quill.getLength() is 1 for an empty editor
-  const attachmentsValid = validateAttachments(false); // Check validity without showing errors yet
+  const bodyFilled = quill && quill.getLength() > 1;
+  const attachmentsValid = validateAttachments(false);
 
   if (currentMode === "csv") {
     const csvFileSelected = !!csvFileHandle;
     const recipientTemplateFilled =
       document.getElementById("recipient-template").value.trim() !== "";
-    // Preview needs first row data
     isPreviewValid =
       csvFileSelected &&
-      csvFirstRow &&
+      csvFirstRow && // Need first row data for preview
       recipientTemplateFilled &&
       subjectFilled &&
       bodyFilled &&
       attachmentsValid;
-    // Sending just needs a file selected
     isSendValid =
-      csvFileSelected &&
+      csvFileSelected && // Only need file handle for sending
       recipientTemplateFilled &&
       subjectFilled &&
       bodyFilled &&
@@ -333,7 +346,7 @@ function checkFormValidityAndButtonStates() {
       subjectFilled &&
       bodyFilled &&
       attachmentsValid;
-    updateManualRecipientCounter(); // Update counter display
+    updateManualRecipientCounter();
   }
 
   previewButton.disabled = !isPreviewValid;
@@ -346,7 +359,6 @@ function generatePreview() {
   resetPreview();
 
   if (!validateAttachments(true)) {
-    // Show errors if attachments are invalid
     displayStatus("Please fix attachment issues before previewing.", "warning");
     return;
   }
@@ -373,24 +385,17 @@ function generatePreview() {
     const recipientTemplate =
       document.getElementById("recipient-template").value;
     if (!csvFirstRow || csvHeaders.length === 0) {
-      displayStatus(
-        "Cannot generate CSV preview. Load a valid CSV with headers and at least one data row.",
-        "warning"
-      );
+      displayStatus("Load a valid CSV with data for preview.", "warning");
       return;
     }
     if (!recipientTemplate) {
-      displayStatus(
-        "Please fill in the Recipient Email Template for CSV preview.",
-        "warning"
-      );
+      displayStatus("Fill in Recipient Email Template.", "warning");
       return;
     }
-    // Validate recipient template format
     const recipientPlaceholderMatch = recipientTemplate.match(/^\{(.+?)\}$/);
     if (!recipientPlaceholderMatch) {
       displayStatus(
-        "Recipient Email Template must contain exactly one placeholder like {EmailColumn}.",
+        "Recipient Template must be like {EmailColumn}.",
         "warning"
       );
       return;
@@ -398,16 +403,15 @@ function generatePreview() {
     const recipientHeader = recipientPlaceholderMatch[1];
     if (!csvHeaders.includes(recipientHeader)) {
       displayStatus(
-        `Recipient header '{${recipientHeader}}' specified in template not found in CSV headers. Check spelling/case.`,
+        `Recipient header '{${recipientHeader}}' not found in CSV.`,
         "warning"
       );
       return;
     }
 
-    previewTo = recipientTemplate; // Start with the template
+    previewTo = recipientTemplate;
     contextText = "(Preview based on first CSV data row)";
 
-    // Find all unique placeholders used in templates
     [recipientTemplate, subjectTemplate, bodyTemplateHtml].forEach(
       (template) => {
         let match;
@@ -416,18 +420,16 @@ function generatePreview() {
             unresolvedPlaceholders.add(match[0]);
           }
         }
-        // Reset regex lastIndex since we reuse it
         placeholderRegex.lastIndex = 0;
       }
     );
 
-    // Replace placeholders with data from the first row
     csvHeaders.forEach((header) => {
       const placeholder = new RegExp(`\\{${escapeRegExp(header)}\\}`, "g");
       const value =
         csvFirstRow[header] !== undefined && csvFirstRow[header] !== null
-          ? String(csvFirstRow[header]) // Ensure value is a string
-          : ""; // Use empty string for missing/null values
+          ? String(csvFirstRow[header])
+          : "";
       previewTo = previewTo.replace(placeholder, value);
       previewSubject = previewSubject.replace(placeholder, value);
       previewBody = previewBody.replace(placeholder, value);
@@ -439,18 +441,15 @@ function generatePreview() {
     const recipients = parseManualRecipients(manualRecipientsRaw);
 
     if (recipients.length === 0) {
-      displayStatus(
-        "Please enter at least one valid recipient email for Manual mode preview.",
-        "warning"
-      );
+      displayStatus("Enter valid recipient emails.", "warning");
       return;
     }
     if (recipients.length > appLimits.MAX_MANUAL_RECIPIENTS) {
       displayStatus(
-        `Too many recipients entered (${recipients.length}). Maximum allowed is ${appLimits.MAX_MANUAL_RECIPIENTS}.`,
+        `Too many recipients (${recipients.length}). Max ${appLimits.MAX_MANUAL_RECIPIENTS}.`,
         "warning"
       );
-      return; // Prevent preview if too many recipients
+      return;
     }
 
     previewTo =
@@ -458,13 +457,12 @@ function generatePreview() {
       (recipients.length > 1 ? ` (and ${recipients.length - 1} others)` : "");
     contextText = "(Manual mode preview - Placeholders NOT replaced)";
 
-    // Find placeholders in manual mode templates (to warn user)
     [subjectTemplate, bodyTemplateHtml].forEach((template) => {
       let match;
       while ((match = placeholderRegex.exec(template)) !== null) {
         unresolvedPlaceholders.add(match[0]);
       }
-      placeholderRegex.lastIndex = 0; // Reset regex lastIndex
+      placeholderRegex.lastIndex = 0;
     });
   }
 
@@ -491,18 +489,16 @@ function generatePreview() {
 
   if (currentMode === "csv" && unresolvedPlaceholders.size > 0) {
     displayStatus(
-      `Preview Generated. <strong class="text-danger">Warning:</strong> Unresolved placeholders found: ${[
+      `Preview Generated. <strong class="text-danger">Warning:</strong> Unresolved placeholders: ${[
         ...unresolvedPlaceholders,
-      ].join(
-        ", "
-      )}. These will appear literally in the email. Check spelling/case against CSV headers.`,
+      ].join(", ")}. Check spelling/case.`,
       "warning"
     );
   } else if (currentMode === "manual" && unresolvedPlaceholders.size > 0) {
     displayStatus(
       `Preview Generated. <strong class="text-warning">Note:</strong> Placeholders (${[
         ...unresolvedPlaceholders,
-      ].join(", ")}) found. In Manual mode, these are sent literally.`,
+      ].join(", ")}) will be sent literally.`,
       "warning"
     );
   } else {
@@ -530,7 +526,6 @@ function handleFormSubmit(event) {
   }
 
   if (!validateAttachments(true)) {
-    // Show errors if attachments invalid
     displayStatus("Please fix attachment issues before sending.", "warning");
     return;
   }
@@ -550,7 +545,6 @@ function handleFormSubmit(event) {
       );
       return;
     }
-    // Validate recipient template format again before sending
     const recipientPlaceholderMatch = recipientTemplate.match(/^\{(.+?)\}$/);
     if (!recipientPlaceholderMatch) {
       displayStatus(
@@ -587,34 +581,29 @@ function handleFormSubmit(event) {
       );
       return;
     }
-    if (recipientCount === 0) {
-      // Check if parsing leads to zero valid emails
-      const validRecipients = parseManualRecipients(manualRecipientsValue);
-      if (validRecipients.length === 0) {
-        displayStatus(
-          "No valid email addresses found in the recipient list.",
-          "warning"
-        );
-        return;
-      }
+    const validRecipients = parseManualRecipients(manualRecipientsValue);
+    if (validRecipients.length === 0) {
+      displayStatus(
+        "No valid email addresses found in the recipient list.",
+        "warning"
+      );
+      return;
     }
   }
   // --- End Client-side validation ---
 
   document.getElementById("body-template").value = quill.root.innerHTML;
   const formData = new FormData(event.target);
-  formData.set("mode", currentMode); // Ensure mode is explicitly set
+  formData.set("mode", currentMode);
 
-  // Make sure the correct file handle is used if user switched modes
   if (
     currentMode === "csv" &&
     csvFileHandle &&
     (!formData.has("csv_file") ||
-      formData.get("csv_file")?.size !== csvFileHandle.size) // Check if file in form matches handle
+      formData.get("csv_file")?.size !== csvFileHandle.size)
   ) {
     formData.set("csv_file", csvFileHandle, csvFileHandle.name);
   } else if (currentMode === "manual" && formData.has("csv_file")) {
-    // Ensure CSV is not sent in manual mode if user switched after selecting file
     formData.delete("csv_file");
   }
 
@@ -622,7 +611,7 @@ function handleFormSubmit(event) {
   spinner.style.display = "inline-block";
   if (sendButtonIcon) sendButtonIcon.style.display = "none";
   displayStatus(
-    "Sending emails... Please wait. This can take time depending on the number of emails and attachments.",
+    "Sending emails... Please wait.",
     "info",
     true // isLoading = true
   );
@@ -633,143 +622,145 @@ function handleFormSubmit(event) {
   })
     .then((response) => {
       if (!response.ok) {
-        // Attempt to parse JSON error body first
         return response
           .json()
-          .catch(() => {
-            // If JSON parsing fails, create a generic error object
-            return {
-              error: `Server error: ${response.status} ${response.statusText}. Check server logs.`,
-              statusCode: response.status,
-            };
-          })
+          .catch(() => ({
+            error: `Server error: ${response.status} ${response.statusText}. Check server logs.`,
+            statusCode: response.status,
+          }))
           .then((errData) => {
-            // Ensure statusCode is set, even if error was generic
             if (!errData.statusCode) errData.statusCode = response.status;
-            throw errData; // Re-throw the processed error object/JSON
+            throw errData;
           });
       }
-      return response.json(); // Parse successful JSON response
+      return response.json();
     })
     .then((body) => {
       if (body.success) {
-        let message = `<h5><i class="bi bi-check-circle-fill text-success me-2"></i>Process Complete</h5><p class="lead">${escapeHtml(
+        let message = `<h5>Process Complete</h5><p class="lead">${escapeHtml(
           body.message || "Emails processed successfully."
         )}</p>`;
         if (body.results && body.results.length > 0) {
           message += renderResultsTable(body.results);
         }
-        displayStatus(message, "success");
+        displayStatus(message, "success"); // Success status will have its icon added by displayStatus
       } else {
-        // Handle specific known error codes gracefully from parsed JSON error
         console.error("Send Error Response:", body);
         let errorMessage =
           body.error || "An unknown error occurred during sending.";
-        let alertType = "danger"; // Default to danger
-
-        // Use statusCode from parsed body if available
+        let alertType = "danger";
         const statusCode = body.statusCode || 0;
 
         if (statusCode === 401) {
           errorMessage = `Authentication Error (${statusCode}): ${escapeHtml(
             errorMessage
-          )}. Please reload the page and sign in again.`;
+          )}. Reload page & sign in again.`;
         } else if (statusCode === 400) {
           errorMessage = `Invalid Request (${statusCode}): ${escapeHtml(
             errorMessage
-          )}. Please check your inputs (CSV, recipients, templates, attachments).`;
-          alertType = "warning"; // More likely a user input issue
+          )}. Check inputs.`;
+          alertType = "warning";
         } else if (statusCode === 413) {
           errorMessage = `Request Too Large (${statusCode}): ${escapeHtml(
             errorMessage
-          )}. Reduce the size or number of attachments.`;
+          )}. Reduce attachment size/number.`;
           alertType = "warning";
         } else if (statusCode === 429) {
           errorMessage = `Rate Limit Exceeded (${statusCode}): ${escapeHtml(
             errorMessage
-          )}. Please wait a while before trying again.`;
+          )}. Wait before trying again.`;
           alertType = "warning";
         } else if (statusCode >= 500) {
-          // Catch 500+ server errors
           errorMessage = `Server Error (${statusCode}): ${escapeHtml(
             errorMessage
-          )}. Please try again later or contact support. Check server logs.`;
+          )}. Try again later or contact support.`;
         } else if (statusCode) {
-          // Generic handling for other client errors (4xx)
           errorMessage = `Error ${statusCode}: ${escapeHtml(errorMessage)}`;
-          alertType = "warning"; // Treat other 4xx as warnings initially
+          alertType = "warning";
         } else {
-          errorMessage = escapeHtml(errorMessage); // Non-HTTP errors or unknown status
+          errorMessage = escapeHtml(errorMessage);
         }
 
-        let detailedMessage = `<h5><i class="bi bi-exclamation-triangle-fill text-${
-          alertType === "danger" ? "danger" : "warning"
-        } me-2"></i>Send Failed</h5><p class="lead">${errorMessage}</p>`;
+        let detailedMessage = `<h5>Send Failed</h5><p class="lead">${errorMessage}</p>`;
 
         if (body.results && body.results.length > 0) {
           detailedMessage +=
             '<p class="mt-2 mb-1">Partial results (processing may have stopped):</p>';
           detailedMessage += renderResultsTable(body.results);
         }
-        displayStatus(detailedMessage, alertType);
+        displayStatus(detailedMessage, alertType); // Error status will have icon added
       }
     })
     .catch((error) => {
-      // Handle fetch errors (network issues) or errors thrown from response processing
       console.error("Fetch/Processing Error:", error);
       let message = "An unexpected client-side error occurred.";
       let alertType = "danger";
 
       if (error instanceof TypeError) {
-        // Likely a network error (fetch couldn't connect)
-        message = `Network error: ${error.message}. Could not reach the server. Please check your connection.`;
+        message = `Network error: ${error.message}. Could not reach server. Check connection.`;
       } else if (error.error) {
-        // Errors thrown from response processing (already parsed/processed)
         const statusCode = error.statusCode || 0;
-        message = error.error; // Use the error message from the thrown object
-
+        message = error.error;
         if (statusCode === 401) {
-          message = `Authentication Error (${statusCode}): ${escapeHtml(
+          message = `Auth Error (${statusCode}): ${escapeHtml(
             message
-          )}. Reload and re-authenticate.`;
+          )}. Reload & re-auth.`;
         } else if (statusCode === 429) {
-          message = `Rate Limit Exceeded (${statusCode}): ${escapeHtml(
+          message = `Rate Limit (${statusCode}): ${escapeHtml(
             message
-          )}. Please wait before trying again.`;
+          )}. Wait before retrying.`;
           alertType = "warning";
         } else if (statusCode >= 500) {
           message = `Server Error (${statusCode}): ${escapeHtml(
             message
-          )}. Please try again later.`;
+          )}. Try again later.`;
         } else if (statusCode) {
           message = `Error ${statusCode}: ${escapeHtml(message)}`;
           alertType = "warning";
         } else {
-          message = escapeHtml(message); // Non-HTTP errors
+          message = escapeHtml(message);
         }
       } else if (error.message) {
-        // Generic JS errors caught by fetch/promise chain
         message = `Client processing error: ${error.message}`;
       }
 
-      displayStatus(
-        `<h5><i class="bi bi-wifi-off text-danger me-2"></i>Error Occurred</h5> <p>${message}</p>`,
-        alertType
-      );
+      displayStatus(`<h5>Error Occurred</h5> <p>${message}</p>`, alertType); // Error status will have icon
     })
     .finally(() => {
-      sendButton.disabled = false; // Re-enable button, validity check will run again on next input
+      sendButton.disabled = false;
       spinner.style.display = "none";
       if (sendButtonIcon) sendButtonIcon.style.display = "inline-block";
-      checkFormValidityAndButtonStates(); // Re-evaluate button states after send attempt
+      checkFormValidityAndButtonStates();
     });
 }
 
 function renderResultsTable(results) {
   if (!results || results.length === 0) return "";
 
+  // Group results by status for summary
+  const summary = results.reduce((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  let summaryHtml = '<p class="mb-2"><strong>Summary:</strong> ';
+  summaryHtml += Object.entries(summary)
+    .map(([status, count]) => {
+      let badgeClass = "bg-secondary";
+      if (status === "sent") badgeClass = "bg-success";
+      else if (status === "skipped") badgeClass = "bg-warning text-dark";
+      else if (status === "failed") badgeClass = "bg-danger";
+      else if (status === "warning") badgeClass = "bg-info text-dark";
+      return `<span class="badge ${badgeClass} me-2">${escapeHtml(
+        status
+      )}: ${count}</span>`;
+    })
+    .join("");
+  summaryHtml += "</p>";
+
   let tableHtml = `
-        <div class="table-responsive mt-3" style="max-height: 400px; overflow-y: auto;">
+        ${summaryHtml}
+        <div class="table-responsive mt-1" style="max-height: 400px; overflow-y: auto;">
           <table class="table table-sm table-striped table-hover small">
             <thead class="table-light sticky-top">
               <tr>
@@ -789,31 +780,26 @@ function renderResultsTable(results) {
     switch (r.status) {
       case "sent":
         statusClass = "text-success";
-        iconClass = "bi-check-circle-fill";
+        iconClass = "bi-check-circle"; // Use outline icon for less emphasis in rows
         break;
       case "skipped":
         statusClass = "text-warning";
-        iconClass = "bi-skip-forward-fill";
+        iconClass = "bi-skip-forward";
         break;
       case "failed":
         statusClass = "text-danger";
-        iconClass = "bi-x-octagon-fill";
+        iconClass = "bi-x-octagon";
         break;
-      case "aborted": // Should not typically happen with current flow, but handle if added
-        statusClass = "text-danger fw-bold";
-        iconClass = "bi-stop-circle-fill";
-        break;
-      case "warning": // For warnings like CSV truncation
+      case "warning":
         statusClass = "text-info";
-        iconClass = "bi-exclamation-circle-fill";
-        statusText = "Processed with Warning"; // More descriptive
+        iconClass = "bi-exclamation-circle";
+        statusText = "Processed (Warning)";
         break;
       default:
         statusClass = "text-muted";
         iconClass = "bi-question-circle";
     }
 
-    // Truncate long reasons for display, provide full reason in title
     const fullReason = escapeHtml(r.reason || "");
     const displayReason =
       fullReason.length > 150
@@ -821,19 +807,17 @@ function renderResultsTable(results) {
         : fullReason;
     const reasonHtml = fullReason
       ? `<span title="${fullReason}">${displayReason}</span>`
-      : '<span class="text-muted">N/A</span>';
-
+      : '<span class="text-muted">-</span>';
     const recipientHtml = escapeHtml(r.recipient || "N/A");
-    // Use provided row number, fallback to index+1 (adjusting for header row if needed, assuming r.row is 1-based)
     const rowNum = r.row
       ? escapeHtml(String(r.row))
       : currentMode === "csv"
       ? index + 2
-      : index + 1; // Rough estimate for display
+      : index + 1;
 
     tableHtml += `
             <tr>
-              <td>${rowNum}</td>
+              <td class="text-muted">${rowNum}</td>
               <td>${recipientHtml}</td>
               <td class="${statusClass}"><i class="bi ${iconClass} me-1"></i>${statusText}</td>
               <td>${reasonHtml}</td>
@@ -853,175 +837,158 @@ function displayStatus(message, type = "info", isLoading = false) {
   const statusMessageDiv = document.getElementById("status-message");
   if (!statusMessageDiv) return;
 
-  // Clear any existing timeout for auto-dismiss messages
   if (infoStatusTimeout) {
     clearTimeout(infoStatusTimeout);
     infoStatusTimeout = null;
   }
 
-  // Determine the style and behavior
   let alertClass = `alert-${type}`;
   let shouldScroll = false;
   let autoDismiss = false;
-  let iconHtml = "";
+  let iconClass = "";
 
   if (isLoading) {
     alertClass = "alert-info";
-    iconHtml =
-      '<div class="spinner-border spinner-border-sm flex-shrink-0 me-3" role="status" style="margin-top: 0.15rem;"><span class="visually-hidden">Loading...</span></div>';
-    shouldScroll = true; // Scroll when loading starts
+    iconClass = "spinner-border spinner-border-sm"; // Use spinner class directly
+    shouldScroll = true;
   } else {
-    // Define icons for different types
     switch (type) {
       case "success":
-        alertClass = "alert-success"; // Ensure correct class
-        iconHtml = '<i class="bi bi-check-circle-fill flex-shrink-0 me-2"></i>';
+        alertClass = "alert-success";
+        iconClass = "bi bi-check-circle-fill"; // Use filled icon for main status
         shouldScroll = true;
         break;
       case "warning":
-        alertClass = "alert-warning"; // Ensure correct class for warning
-        iconHtml =
-          '<i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>';
-        // Optionally scroll for warnings if they are critical, maybe not for simple ones
-        // shouldScroll = true;
+        alertClass = "alert-warning";
+        iconClass = "bi bi-exclamation-triangle-fill";
         break;
       case "danger":
-        alertClass = "alert-danger"; // Ensure correct class
-        iconHtml = '<i class="bi bi-x-octagon-fill flex-shrink-0 me-2"></i>';
+        alertClass = "alert-danger";
+        iconClass = "bi bi-x-octagon-fill";
         shouldScroll = true;
         break;
       case "info":
-      default: // Default to info style
-        alertClass = "alert-secondary"; // Use secondary for less intrusive info
-        iconHtml = '<i class="bi bi-info-circle-fill flex-shrink-0 me-2"></i>'; // Use filled icon
-        autoDismiss = true; // Auto-dismiss simple info messages like "Preview generated"
+      default:
+        alertClass = "alert-secondary"; // Use secondary for less emphasis
+        iconClass = "bi bi-info-circle-fill";
+        autoDismiss = true;
         break;
     }
   }
 
   const alertDiv = document.createElement("div");
-  // Use standard Bootstrap alert structure for consistency and accessibility
   alertDiv.className = `alert ${alertClass} alert-dismissible d-flex align-items-start fade show`;
   alertDiv.setAttribute("role", "alert");
+
+  // Construct inner HTML carefully
+  let iconHtml = "";
+  if (isLoading) {
+    iconHtml = `<div class="${iconClass} flex-shrink-0 me-3" role="status" style="margin-top: 0.15rem;"><span class="visually-hidden">Loading...</span></div>`;
+  } else if (iconClass) {
+    // Only add i tag if iconClass is set and not loading
+    iconHtml = `<i class="${iconClass} flex-shrink-0 me-2" style="font-size: 1.2rem;"></i>`;
+  }
+
+  // Check if message already contains <h5> for title - avoids nested <h5>
+  const containsTitle = /<h5\b/i.test(message);
+  const messageContent = containsTitle
+    ? message
+    : `<p class="mb-0">${message}</p>`; // Wrap simple messages in <p>
+
   alertDiv.innerHTML = `
         ${iconHtml}
-        <div class="flex-grow-1">${message}</div>
+        <div class="flex-grow-1">${messageContent}</div>
         <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Close" style="margin-top: -0.1rem;"></button>
     `;
 
-  statusMessageDiv.innerHTML = ""; // Clear previous messages
+  statusMessageDiv.innerHTML = "";
   statusMessageDiv.appendChild(alertDiv);
 
   if (shouldScroll) {
     statusMessageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  // Set timeout for auto-dismissal only if flag is true
   if (autoDismiss && !isLoading) {
     infoStatusTimeout = setTimeout(() => {
       const currentAlert = statusMessageDiv.querySelector(".alert");
-      // Only dismiss if it's still the same auto-dismiss alert
       if (
         currentAlert &&
-        (currentAlert.classList.contains("alert-secondary") || // Match the class used for autoDismiss
-          currentAlert.classList.contains("alert-info")) && // Also handle potential explicit info class
-        !isLoading // Double check it's not a loading message
+        (currentAlert.classList.contains("alert-secondary") ||
+          currentAlert.classList.contains("alert-info")) &&
+        !isLoading
       ) {
-        // Use Bootstrap's method to close the alert gracefully
         const bsAlert = bootstrap.Alert.getOrCreateInstance(currentAlert);
-        if (bsAlert) {
-          bsAlert.close();
-        } else {
-          currentAlert.remove(); // Fallback if BS instance not found
-        }
+        if (bsAlert) bsAlert.close();
+        else currentAlert.remove();
       }
-      infoStatusTimeout = null; // Clear timeout ID
-    }, 7000); // Increased timeout to 7 seconds
+      infoStatusTimeout = null;
+    }, 7000);
   }
 }
 
 function escapeRegExp(string) {
-  // Escape characters with special meaning in regex
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function escapeHtml(unsafe) {
   if (typeof unsafe !== "string") {
+    if (unsafe === null || typeof unsafe === "undefined") return "";
     try {
-      // Convert non-strings carefully, return empty for null/undefined
-      if (unsafe === null || typeof unsafe === "undefined") return "";
       unsafe = String(unsafe);
     } catch (e) {
-      console.warn("Could not convert value to string for escaping:", unsafe);
-      return "Invalid Value"; // Return placeholder on conversion error
+      console.warn("Could not convert value:", unsafe);
+      return "Invalid";
     }
   }
-  // Basic HTML escaping using browser's capabilities (more robust)
   const div = document.createElement("div");
   div.textContent = unsafe;
   return div.innerHTML;
-  /* Alternative simpler escaping:
-  return unsafe
-    .replace(/&/g, "&amp;") // Must be first
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;"); // Use &#039; for single quote
-  */
 }
 
 function insertPlaceholderIntoInput(targetId) {
   if (currentMode !== "csv" || csvHeaders.length === 0) {
-    displayStatus(
-      "Placeholders only available in CSV mode with loaded headers.",
-      "info"
-    );
+    displayStatus("Placeholders only available in CSV mode.", "info");
     return;
   }
   const header = prompt(
-    `Enter the CSV header name to insert (case-sensitive):\nAvailable: ${csvHeaders.join(
-      ", "
-    )}`
+    `Enter CSV header name:\nAvailable: ${csvHeaders.join(", ")}`
   );
   const targetInput = document.getElementById(targetId);
   if (header && csvHeaders.includes(header.trim()) && targetInput) {
     const placeholderText = `{${header.trim()}}`;
-    // Insert placeholder at cursor position
     const start = targetInput.selectionStart;
     const end = targetInput.selectionEnd;
-    const text = targetInput.value;
     targetInput.value =
-      text.substring(0, start) + placeholderText + text.substring(end);
-    // Move cursor to after the inserted placeholder
+      targetInput.value.substring(0, start) +
+      placeholderText +
+      targetInput.value.substring(end);
     targetInput.focus();
     targetInput.setSelectionRange(
       start + placeholderText.length,
       start + placeholderText.length
     );
-    checkFormValidityAndButtonStates(); // Update buttons after insertion
-    targetInput.dispatchEvent(new Event("input")); // Trigger input event for frameworks/listeners
+    checkFormValidityAndButtonStates();
+    targetInput.dispatchEvent(new Event("input"));
   } else if (header) {
-    // Provide specific feedback if header invalid vs input missing
-    if (!targetInput) {
-      displayStatus(`Target input field '#${targetId}' not found.`, "danger");
-    } else {
+    if (!targetInput)
+      displayStatus(`Target '#${targetId}' not found.`, "danger");
+    else
       displayStatus(
-        `Header "${header.trim()}" not found in CSV. Check spelling/case.`,
+        `Header "${header.trim()}" not found. Check spelling/case.`,
         "warning"
       );
-    }
   }
 }
 
 function validateAttachments(showErrorMessages = true) {
   const attachmentInput = document.getElementById("attachments");
   const errorDiv = document.getElementById("attachment-error");
-  if (!attachmentInput) return true; // No input element, so no attachments to validate
+  if (!attachmentInput) return true;
   const files = attachmentInput.files;
-  if (errorDiv) errorDiv.textContent = ""; // Clear previous errors
+  if (errorDiv) errorDiv.textContent = "";
 
   if (files.length > appLimits.MAX_ATTACHMENTS_PER_EMAIL) {
-    const errorMsg = `Too many files selected (${files.length}). Maximum is ${appLimits.MAX_ATTACHMENTS_PER_EMAIL}.`;
+    const errorMsg = `Too many files (${files.length}). Max ${appLimits.MAX_ATTACHMENTS_PER_EMAIL}.`;
     if (showErrorMessages) {
       if (errorDiv) errorDiv.textContent = errorMsg;
       displayStatus(`Attachment Error: ${errorMsg}`, "warning");
@@ -1035,9 +1002,7 @@ function validateAttachments(showErrorMessages = true) {
   }
 
   if (totalSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES) {
-    const errorMsg = `Total attachment size exceeds limit (${
-      appLimits.MAX_TOTAL_ATTACHMENT_SIZE_MB
-    } MB). Current size: ${(totalSize / (1024 * 1024)).toFixed(1)} MB.`;
+    const errorMsg = `Total size exceeds limit (${appLimits.MAX_TOTAL_ATTACHMENT_SIZE_MB} MB).`;
     if (showErrorMessages) {
       if (errorDiv) errorDiv.textContent = errorMsg;
       displayStatus(`Attachment Error: ${errorMsg}`, "warning");
@@ -1045,19 +1010,17 @@ function validateAttachments(showErrorMessages = true) {
     return false;
   }
 
-  return true; // All checks passed
+  return true;
 }
 
 function updateAttachmentList() {
   const attachmentInput = document.getElementById("attachments");
   const listDiv = document.getElementById("attachment-list");
-  if (!attachmentInput || !listDiv) return; // Exit if elements don't exist
+  if (!attachmentInput || !listDiv) return;
 
-  listDiv.innerHTML = ""; // Clear existing list
+  listDiv.innerHTML = "";
 
-  if (!attachmentInput.files || attachmentInput.files.length === 0) {
-    return; // Nothing to list
-  }
+  if (!attachmentInput.files || attachmentInput.files.length === 0) return;
 
   const files = Array.from(attachmentInput.files);
   const list = document.createElement("ul");
@@ -1067,10 +1030,9 @@ function updateAttachmentList() {
   files.forEach((file) => {
     const li = document.createElement("li");
     li.className =
-      "text-muted d-flex justify-content-between align-items-center border-bottom py-1"; // Add border for separation
+      "text-muted d-flex justify-content-between align-items-center border-bottom py-1";
     const fileSizeKB = (file.size / 1024).toFixed(1);
     totalSize += file.size;
-    // Display file info, escape filename
     li.innerHTML = `
             <span><i class="bi bi-file-earmark me-1"></i> ${escapeHtml(
               file.name
@@ -1080,14 +1042,15 @@ function updateAttachmentList() {
     list.appendChild(li);
   });
 
-  // Add summary row at the end
   const summary = document.createElement("li");
-  summary.className = "mt-1 pt-1 fw-medium"; // Remove border-top, use margin/padding
+  summary.className = "mt-1 pt-1 fw-medium";
   const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(1);
   summary.textContent = `Total: ${files.length} file(s), ${totalSizeMB} MB / ${appLimits.MAX_TOTAL_ATTACHMENT_SIZE_MB} MB`;
 
-  // Add warning color if size exceeds limit
-  if (totalSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES) {
+  if (
+    totalSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES ||
+    files.length > appLimits.MAX_ATTACHMENTS_PER_EMAIL
+  ) {
     summary.classList.add("text-danger");
   }
 
@@ -1097,26 +1060,19 @@ function updateAttachmentList() {
 
 function handleAttachmentChange(event) {
   updateAttachmentList();
-  if (!validateAttachments(true)) {
-    // Show error messages if validation fails
-    // Optionally clear the input if invalid to force re-selection
-    // event.target.value = null;
-    // updateAttachmentList(); // Update list again if cleared
-  }
+  validateAttachments(true); // Validate and show errors immediately
   checkFormValidityAndButtonStates();
 }
 
 function parseManualRecipients(rawValue) {
-  // More robust email regex (still not perfect, but better)
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   return rawValue
-    .split(/[\s,;\n]+/) // Split by common delimiters
+    .split(/[\s,;\n]+/)
     .map((email) => email.trim())
-    .filter((email) => email !== "" && emailRegex.test(email)); // Filter by non-empty and regex match
+    .filter((email) => email !== "" && emailRegex.test(email));
 }
 
 function countManualRecipients(rawValue) {
-  // Simple count based on potential entries (splits), less accurate but fast for UI
   return rawValue.split(/[\s,;\n]+/).filter((e) => e.trim() !== "").length;
 }
 
@@ -1129,7 +1085,7 @@ function updateManualRecipientCounter() {
   counterDiv.textContent = `Recipients: ${count} / ${appLimits.MAX_MANUAL_RECIPIENTS}`;
 
   if (count > appLimits.MAX_MANUAL_RECIPIENTS) {
-    textarea.classList.add("is-invalid"); // Use Bootstrap's invalid state
+    textarea.classList.add("is-invalid");
     counterDiv.classList.add("text-danger");
     counterDiv.classList.remove("text-muted");
   } else {
@@ -1141,11 +1097,9 @@ function updateManualRecipientCounter() {
 
 // Event Listeners Setup
 document.addEventListener("DOMContentLoaded", function () {
-  // Check if we are on the app page by looking for a specific element
   const emailForm = document.getElementById("email-form");
 
   if (emailForm) {
-    // Only initialize Quill and app-specific listeners if the form exists
     initializeQuill();
 
     const csvFileInput = document.getElementById("csv-file");
@@ -1158,17 +1112,14 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById("manual-recipients");
 
     emailForm.addEventListener("submit", handleFormSubmit);
-
-    modeTabs.forEach((tab) => {
-      tab.addEventListener("shown.bs.tab", handleModeChange);
-    });
-
+    modeTabs.forEach((tab) =>
+      tab.addEventListener("shown.bs.tab", handleModeChange)
+    );
     if (csvFileInput)
       csvFileInput.addEventListener("change", handleCsvFileSelect);
     if (previewButton) previewButton.addEventListener("click", generatePreview);
     if (attachmentInput)
       attachmentInput.addEventListener("change", handleAttachmentChange);
-
     if (manualRecipientsTextarea) {
       manualRecipientsTextarea.addEventListener(
         "input",
@@ -1183,43 +1134,86 @@ document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll(".placeholder-inserter-btn").forEach((button) => {
       button.addEventListener("click", () => {
         const targetId = button.getAttribute("data-target");
-        if (targetId) {
-          insertPlaceholderIntoInput(targetId);
-        }
+        if (targetId) insertPlaceholderIntoInput(targetId);
       });
     });
 
-    // Add input listeners to relevant fields to check form validity
     ["recipient-template", "subject-template"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.addEventListener("input", checkFormValidityAndButtonStates);
     });
 
     if (quill) {
-      quill.on("text-change", () => {
+      // Function to update the character counter display
+      const updateBodyCounter = () => {
+        const counterElement = document.getElementById("body-char-count");
+        if (!counterElement) return;
+
+        const length = quill.getLength() - 1; // Exclude trailing newline
+        counterElement.textContent = `${length} / ${MAX_BODY_LENGTH}`;
+
+        if (length >= MAX_BODY_LENGTH) {
+          counterElement.classList.add("text-danger");
+        } else {
+          counterElement.classList.remove("text-danger");
+        }
+      };
+
+      quill.on("text-change", (delta, oldDelta, source) => {
         // Update hidden input for form submission
         const bodyTemplateInput = document.getElementById("body-template");
         if (bodyTemplateInput) {
           bodyTemplateInput.value = quill.root.innerHTML;
         }
-        checkFormValidityAndButtonStates();
+
+        // Enforce character limit
+        const currentLength = quill.getLength() - 1;
+        if (currentLength > MAX_BODY_LENGTH) {
+          // Use 'silent' source to prevent infinite loop if deleteText triggers text-change
+          quill.deleteText(
+            MAX_BODY_LENGTH,
+            currentLength - MAX_BODY_LENGTH,
+            "silent"
+          );
+          // Re-calculate length after deletion for accurate counter
+          updateBodyCounter();
+        } else {
+          // Update counter normally
+          updateBodyCounter();
+        }
+
+        // Only check form validity if the change came from the user
+        if (source === "user") {
+          checkFormValidityAndButtonStates();
+        }
       });
     }
 
-    // Initial setup for the app page
-    resetCsvState(); // Resets CSV specific state and buttons
+    // Initial setup
+    resetCsvState();
     currentMode =
       document
         .querySelector("#modeTabs .nav-link.active")
         ?.getAttribute("data-mode") || "csv";
     const currentModeInput = document.getElementById("current-mode");
     if (currentModeInput) currentModeInput.value = currentMode;
-
-    updatePlaceholderInsertersState(); // Set initial state based on mode
-    updateManualRecipientCounter(); // Set initial count for manual mode
-    checkFormValidityAndButtonStates(); // Set initial button states
-  } else {
-    // Code for the landing page (index.html) if needed
-    console.log("Landing page loaded.");
+    updatePlaceholderInsertersState();
+    updateManualRecipientCounter();
+    // Initial call to set the body counter after quill is ready
+    if (quill) {
+      const updateBodyCounterInitial = () => {
+        const counterElement = document.getElementById("body-char-count");
+        if (!counterElement) return;
+        const length = quill.getLength() - 1;
+        counterElement.textContent = `${length} / ${MAX_BODY_LENGTH}`;
+        if (length >= MAX_BODY_LENGTH) {
+          counterElement.classList.add("text-danger");
+        } else {
+          counterElement.classList.remove("text-danger");
+        }
+      };
+      updateBodyCounterInitial();
+    }
+    checkFormValidityAndButtonStates(); // Checks button states including initial body content
   }
 });

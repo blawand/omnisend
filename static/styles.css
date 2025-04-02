@@ -92,13 +92,14 @@ a:hover {
   background-color: #dde2e7;
 }
 
-/* --- Cards (App Page) --- */
+/* --- Cards (App Page & Privacy Page) --- */
 .card {
   border: none;
   border-radius: 0.5rem;
   margin-bottom: 1.75rem !important;
   box-shadow: var(--bs-card-box-shadow);
   border: 1px solid var(--bs-card-border-color);
+  background-color: #ffffff; /* Ensure background color */
 }
 .card-header {
   background-color: var(--bs-card-cap-bg);
@@ -120,6 +121,11 @@ a:hover {
 }
 .card-body {
   padding: 1.5rem;
+}
+@media (min-width: 992px) {
+  .card-body.p-lg-5 {
+    padding: 3rem !important; /* Ensure large padding applies on privacy page */
+  }
 }
 
 /* --- Form Elements (App Page) --- */
@@ -146,12 +152,11 @@ textarea.form-control {
   min-height: 120px;
 }
 .form-control.is-invalid {
-  /* Style invalid textarea */
   border-color: var(--bs-danger);
 }
 .form-text {
-  font-size: 0.85em;
-  color: #6c757d;
+  font-size: 0.83em; /* Slightly smaller */
+  color: var(--bs-secondary); /* Use secondary color */
   margin-top: 0.3rem;
 }
 .input-group .btn {
@@ -159,9 +164,8 @@ textarea.form-control {
 }
 .input-group .form-control:focus + .btn,
 .input-group .form-control:focus ~ .btn {
-  /* Style button when input focused */
   border-color: rgba(var(--bs-primary-rgb), 0.5);
-  box-shadow: none; /* Prevent double shadow */
+  box-shadow: none;
 }
 
 /* --- CSV Headers (App Page) --- */
@@ -171,7 +175,8 @@ textarea.form-control {
 #headers-container {
   min-height: 45px;
   background-color: var(--bs-light);
-  border-color: var(--bs-border-color);
+  border: 1px solid var(--bs-border-color); /* Add border */
+  border-radius: var(--bs-border-radius); /* Add radius */
   padding: 0.75rem !important;
 }
 .csv-header-badge {
@@ -236,6 +241,15 @@ textarea.form-control {
   opacity: 0.5;
   cursor: not-allowed;
 }
+#body-char-count {
+  font-size: 0.8em; /* Make it slightly smaller */
+  color: var(--bs-secondary);
+  padding-right: 5px; /* Align slightly with editor padding */
+}
+#body-char-count.text-danger {
+  color: var(--bs-danger) !important; /* Ensure override */
+  font-weight: 500;
+}
 
 /* --- Buttons --- */
 .btn {
@@ -266,7 +280,6 @@ textarea.form-control {
   font-size: 0.875rem;
 }
 .btn-xs {
-  /* Custom smaller button */
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
 }
@@ -393,175 +406,53 @@ textarea.form-control {
 }
 .modal-body code,
 .modal-body .csv-header-badge {
-  /* Style placeholders in modal */
   font-size: 0.9em;
   padding: 0.2em 0.4em;
   background-color: #e9ecef;
   border-radius: 0.2rem;
-  color: #d63384; /* Bootstrap code color */
+  color: #d63384;
   font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
 }
 .modal-body .btn-xs {
-  /* Style example button in modal */
-  pointer-events: none; /* Make it non-interactive */
+  pointer-events: none;
 }
 
 /* --- Footer --- */
-.footer, /* App page footer */
-.footer-landing /* Landing page footer */ {
+.footer {
   font-size: 0.85em;
   color: #6c757d;
-  background-color: #e9ecef; /* Slightly darker footer */
-  padding: 1.5rem 0; /* Consistent padding */
-  margin-top: auto; /* Push footer to bottom */
+  background-color: #e9ecef;
+  padding: 1.5rem 0;
+  margin-top: auto;
+  border-top: 1px solid var(--bs-border-color); /* Add border from original */
 }
-.footer a,
-.footer-landing a {
+.footer a {
+  /* Style links in footer if any */
   color: #495057;
   text-decoration: none;
 }
-.footer a:hover,
-.footer-landing a:hover {
+.footer a:hover {
   color: var(--bs-primary);
   text-decoration: underline;
 }
 
 /* --- Utility --- */
 .d-none {
-  display: none !important; /* Ensure visibility toggle works */
+  display: none !important;
 }
 
-/* --- Landing Page Specific Styles --- */
-.hero-section {
-  background: linear-gradient(
-      rgba(var(--bs-primary-rgb), 0.8),
-      rgba(var(--bs-primary-rgb), 0.9)
-    ),
-    url("https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=2070"); /* Generic tech/collaboration background */
-  background-size: cover;
-  background-position: center;
-  color: white;
-  padding: 6rem 1rem; /* Add horizontal padding */
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column; /* Stack elements vertically */
-}
-.hero-section h1 {
-  font-size: clamp(2.5rem, 6vw, 3.5rem); /* Responsive font size */
-  font-weight: 700;
-  color: white;
-  margin-bottom: 1rem;
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
-}
-.hero-section p.lead {
-  font-size: clamp(1.1rem, 3vw, 1.4rem); /* Responsive font size */
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.9);
-  max-width: 700px;
-  margin: 0 auto 2rem auto;
-}
-.hero-section .btn-launch {
-  font-size: clamp(1rem, 2.5vw, 1.2rem); /* Responsive font size */
-  padding: 0.8rem 2.5rem;
-  background-color: #ffffff;
-  color: var(--bs-primary);
-  font-weight: 600;
-  border: none;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-}
-.hero-section .btn-launch:hover {
-  background-color: #f8f9fa;
-  color: rgb(var(--bs-primary-rgb), 0.8);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
-}
-.features-section {
-  padding: 4rem 0;
-}
-.feature-card {
-  background-color: #fff;
-  border-radius: 0.5rem;
-  padding: 2rem;
-  text-align: center;
-  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--bs-card-border-color);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  height: 100%; /* Ensure cards have same height */
-  display: flex;
-  flex-direction: column;
-}
-.feature-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1);
-}
-.feature-icon {
-  font-size: 3rem;
-  color: var(--bs-primary);
-  margin-bottom: 1.5rem;
-  display: inline-block;
-  line-height: 1;
-}
-.feature-card h3 {
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
-}
-.feature-card p {
-  color: var(--bs-secondary);
-  font-size: 0.95rem;
-  flex-grow: 1; /* Allow paragraph to take up space */
-}
-.security-section {
-  background-color: var(--bs-light);
-  padding: 3rem 0;
-  text-align: center;
-}
-.security-section h2 {
-  margin-bottom: 1.5rem;
-}
-.security-section p {
-  max-width: 700px; /* Wider text */
-  margin: 0 auto 1rem auto;
-  color: var(--bs-secondary);
-  line-height: 1.7;
-}
-.security-icon {
-  font-size: 2rem;
-  color: var(--bs-primary);
-  margin: 0 0.5rem;
-}
-
-/* --- Responsive Adjustments --- */
-@media (max-width: 768px) {
-  .nav-pills .nav-link {
-    margin-bottom: 5px; /* Stack tabs vertically on small screens */
-    margin-left: 0;
-    margin-right: 0;
-  }
-  .card-body {
-    padding: 1rem; /* Reduce padding on small screens */
-  }
-  #editor-container {
-    height: 250px; /* Reduce editor height */
-  }
-  .hero-section {
-    padding: 4rem 1rem; /* Adjust padding */
-  }
-}
-
-/* --- Privacy Policy Page Styles --- */
+/* --- Privacy Policy Page Specific Styles --- */
 .privacy-policy-content {
-  line-height: 1.7; /* Improve readability */
+  line-height: 1.7;
 }
 
 .privacy-policy-content h1 {
   font-size: 2.5rem;
   color: var(--bs-primary);
   font-weight: 700;
+  text-align: center;
+  margin-bottom: 1rem;
 }
 
 .privacy-policy-content h2 {
@@ -571,6 +462,7 @@ textarea.form-control {
   padding-bottom: 0.5rem;
   border-bottom: 2px solid var(--bs-primary);
   color: var(--bs-dark);
+  font-weight: 600;
 }
 
 .privacy-policy-content h3 {
@@ -578,6 +470,7 @@ textarea.form-control {
   margin-top: 2rem;
   margin-bottom: 0.8rem;
   color: rgb(var(--bs-primary-rgb), 0.9);
+  font-weight: 600;
 }
 
 .privacy-policy-content h4 {
@@ -592,9 +485,18 @@ textarea.form-control {
   margin-bottom: 1.1rem;
   color: var(--bs-body-color);
 }
+.privacy-policy-content p.text-muted {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-size: 0.9em;
+}
+.privacy-policy-content hr {
+  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+}
 
 .privacy-policy-content ul {
-  padding-left: 2rem; /* Indent lists */
+  padding-left: 2rem;
   margin-bottom: 1.1rem;
 }
 
@@ -603,7 +505,7 @@ textarea.form-control {
 }
 
 .privacy-policy-content li > p {
-  margin-bottom: 0.3rem; /* Reduce space within list item paragraphs */
+  margin-bottom: 0.3rem;
 }
 
 .privacy-policy-content strong {
@@ -612,5 +514,25 @@ textarea.form-control {
 }
 
 .privacy-policy-content a {
-  word-break: break-all; /* Break long URLs */
+  color: var(--bs-primary); /* Ensure links within use primary color */
+  text-decoration: none;
+  word-break: break-all;
+}
+.privacy-policy-content a:hover {
+  color: rgba(var(--bs-primary-rgb), 0.8);
+  text-decoration: underline;
+}
+
+.google-policy-emphasis {
+  background-color: #eef2ff; /* Light blue background */
+  border-left: 4px solid var(--bs-primary);
+  padding: 1rem 1.25rem;
+  margin: 1.5rem 0;
+  border-radius: var(--bs-border-radius);
+}
+.google-policy-emphasis p {
+  margin-bottom: 0.5rem;
+}
+.google-policy-emphasis p:last-child {
+  margin-bottom: 0;
 }
