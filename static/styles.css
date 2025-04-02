@@ -73,6 +73,20 @@ a:hover {
 .navbar.navbar-dark .navbar-brand i {
   color: #ffffff; /* Keep white icon on dark bg (app page) */
 }
+.navbar .user-info {
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+  margin-right: 1rem;
+}
+.navbar .user-info i {
+  margin-right: 0.5rem;
+  font-size: 1.1rem;
+}
+.navbar .btn-logout {
+  font-size: 0.9rem;
+  padding: 0.3rem 0.8rem;
+}
 /* --- Tabs (App Page) --- */
 .nav-pills .nav-link {
   border-radius: var(--bs-border-radius);

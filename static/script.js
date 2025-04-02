@@ -11,10 +11,11 @@ const appLimits = window.appLimits || {
   MAX_ATTACHMENTS_PER_EMAIL: 5,
   MAX_MANUAL_RECIPIENTS: 100,
   MAX_CSV_RECIPIENTS: 1000,
-  MAX_BODY_LENGTH: 5000,
+  MAX_BODY_LENGTH: 5000, // Add default if not passed
 };
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES =
   appLimits.MAX_TOTAL_ATTACHMENT_SIZE_MB * 1024 * 1024;
+const MAX_BODY_LENGTH = appLimits.MAX_BODY_LENGTH || 5000; // Define MAX_BODY_LENGTH
 
 const toolbarOptions = [
   [{ header: [1, 2, 3, false] }, { font: [] }],
@@ -765,7 +766,7 @@ function renderResultsTable(results) {
             <thead class="table-light sticky-top">
               <tr>
                 <th scope="col">#</th>
-                <th scope="col">Recipient/Target</th>
+                <th scope="col">Recipient</th>
                 <th scope="col">Status</th>
                 <th scope="col">Details</th>
               </tr>
@@ -809,15 +810,23 @@ function renderResultsTable(results) {
       ? `<span title="${fullReason}">${displayReason}</span>`
       : '<span class="text-muted">-</span>';
     const recipientHtml = escapeHtml(r.recipient || "N/A");
-    const rowNum = r.row
-      ? escapeHtml(String(r.row))
-      : currentMode === "csv"
-      ? index + 2
-      : index + 1;
+
+    // Determine row number: Use backend 'row' if present (CSV), otherwise use 1-based index (Manual)
+    let rowNumDisplay = "N/A";
+    if (r.row && String(r.row) !== "N/A") {
+      // Backend 'row' likely includes header offset (e.g., starts at 2)
+      rowNumDisplay = escapeHtml(String(r.row));
+    } else if (currentMode === "manual") {
+      // For manual mode, use 1-based index
+      rowNumDisplay = index + 1;
+    } else if (currentMode === "csv") {
+      // Fallback for CSV if backend didn't provide row number
+      rowNumDisplay = index + 2; // Assumes 0-based index from frontend + header row
+    }
 
     tableHtml += `
             <tr>
-              <td class="text-muted">${rowNum}</td>
+              <td class="text-muted">${rowNumDisplay}</td>
               <td>${recipientHtml}</td>
               <td class="${statusClass}"><i class="bi ${iconClass} me-1"></i>${statusText}</td>
               <td>${reasonHtml}</td>
@@ -1152,6 +1161,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const length = quill.getLength() - 1; // Exclude trailing newline
         counterElement.textContent = `${length} / ${MAX_BODY_LENGTH}`;
 
+        // Use '>=' to show red when exactly at the limit or over
         if (length >= MAX_BODY_LENGTH) {
           counterElement.classList.add("text-danger");
         } else {
@@ -1175,10 +1185,11 @@ document.addEventListener("DOMContentLoaded", function () {
             currentLength - MAX_BODY_LENGTH,
             "silent"
           );
-          // Re-calculate length after deletion for accurate counter
-          updateBodyCounter();
+          // No need to call updateBodyCounter explicitly here,
+          // the 'text-change' event from deleteText will trigger it again.
         } else {
-          // Update counter normally
+          // Update counter normally if not over limit
+          // (also handles updates after deletion)
           updateBodyCounter();
         }
 
@@ -1187,6 +1198,9 @@ document.addEventListener("DOMContentLoaded", function () {
           checkFormValidityAndButtonStates();
         }
       });
+
+      // Initial call to set the body counter after quill is ready
+      updateBodyCounter();
     }
 
     // Initial setup
@@ -1199,21 +1213,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (currentModeInput) currentModeInput.value = currentMode;
     updatePlaceholderInsertersState();
     updateManualRecipientCounter();
-    // Initial call to set the body counter after quill is ready
-    if (quill) {
-      const updateBodyCounterInitial = () => {
-        const counterElement = document.getElementById("body-char-count");
-        if (!counterElement) return;
-        const length = quill.getLength() - 1;
-        counterElement.textContent = `${length} / ${MAX_BODY_LENGTH}`;
-        if (length >= MAX_BODY_LENGTH) {
-          counterElement.classList.add("text-danger");
-        } else {
-          counterElement.classList.remove("text-danger");
-        }
-      };
-      updateBodyCounterInitial();
-    }
+
     checkFormValidityAndButtonStates(); // Checks button states including initial body content
   }
 });

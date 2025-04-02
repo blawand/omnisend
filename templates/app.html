@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SendSuite - Email Sender App</title>
+    <title>SendSuite - Email Sender</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,267 +17,169 @@
       crossorigin="anonymous"
     />
     <link
-      href="https://cdn.quilljs.com/1.3.7/quill.snow.css"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
       rel="stylesheet"
     />
     <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+      href="https://cdn.quilljs.com/1.3.7/quill.snow.css"
       rel="stylesheet"
     />
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='styles.css') }}"
     />
-    <script>
-      window.appLimits = JSON.parse("{{ limits | tojson | safe }}");
-    </script>
+    <style>
+      .navbar .user-info {
+        display: flex;
+        align-items: center;
+        font-size: 0.9rem;
+        margin-right: 1rem;
+      }
+      .navbar .user-info i {
+        margin-right: 0.5rem;
+        font-size: 1.1rem;
+      }
+      .navbar .btn-logout {
+        font-size: 0.9rem;
+        padding: 0.3rem 0.8rem;
+      }
+    </style>
   </head>
   <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
-      <div class="container-fluid">
+    <nav
+      class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm sticky-top"
+    >
+      <div class="container">
         <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
-          <i class="bi bi-envelope-paper-heart-fill me-2"></i>SendSuite
+          <i class="bi bi-envelope-paper-heart-fill me-2 text-white"></i
+          >SendSuite
         </a>
         <button
           class="navbar-toggler"
           type="button"
           data-bs-toggle="collapse"
-          data-bs-target="#navbarNav"
-          aria-controls="navbarNav"
+          data-bs-target="#appNav"
+          aria-controls="appNav"
           aria-expanded="false"
           aria-label="Toggle navigation"
         >
           <span class="navbar-toggler-icon"></span>
         </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-            <li class="nav-item">
-              <span class="navbar-text text-white-50 small">
-                Logged in as: {{ user_email }}
-              </span>
+        <div class="collapse navbar-collapse" id="appNav">
+          <ul class="navbar-nav ms-auto align-items-center">
+            <li class="nav-item user-info me-lg-3 mb-2 mb-lg-0 text-white-50">
+              <i class="bi bi-person-circle"></i>
+              <span id="user-email-display">{{ user_email }}</span>
             </li>
-          </ul>
-          <ul class="navbar-nav ms-auto">
             <li class="nav-item">
-              <button
-                type="button"
-                class="btn btn-sm btn-outline-light"
-                data-bs-toggle="modal"
-                data-bs-target="#instructionsModal"
+              <a
+                href="{{ url_for('logout') }}"
+                class="btn btn-sm btn-outline-light btn-logout"
               >
-                <i class="bi bi-info-circle me-1"></i>How to Use & Limits
-              </button>
+                <i class="bi bi-box-arrow-right me-1"></i>Logout
+              </a>
             </li>
           </ul>
         </div>
       </div>
     </nav>
 
-    <div class="container mt-4 mb-5">
+    <main class="container mt-4">
+      <!-- Mode Selection Tabs -->
+      <ul
+        class="nav nav-pills mb-4 justify-content-center"
+        id="modeTabs"
+        role="tablist"
+      >
+        <li class="nav-item" role="presentation">
+          <button
+            class="nav-link active"
+            id="csv-mode-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#csv-mode-pane"
+            type="button"
+            role="tab"
+            aria-controls="csv-mode-pane"
+            aria-selected="true"
+            data-mode="csv"
+          >
+            <i class="bi bi-filetype-csv me-1"></i> CSV Mode
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button
+            class="nav-link"
+            id="manual-mode-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#manual-mode-pane"
+            type="button"
+            role="tab"
+            aria-controls="manual-mode-pane"
+            aria-selected="false"
+            data-mode="manual"
+          >
+            <i class="bi bi-list-ul me-1"></i> Manual Mode
+          </button>
+        </li>
+      </ul>
+
       <form id="email-form" enctype="multipart/form-data">
         <input type="hidden" name="mode" id="current-mode" value="csv" />
+        <input type="hidden" name="body_template" id="body-template" />
 
-        <div class="row">
-          <div class="col-12">
-            <ul
-              class="nav nav-pills nav-fill mb-4"
-              id="modeTabs"
-              role="tablist"
-            >
-              <li class="nav-item" role="presentation">
-                <button
-                  class="nav-link active"
-                  id="csv-mode-tab"
-                  data-bs-toggle="tab"
-                  data-bs-target="#csv-mode-pane"
-                  type="button"
-                  role="tab"
-                  aria-controls="csv-mode-pane"
-                  aria-selected="true"
-                  data-mode="csv"
-                >
-                  <i class="bi bi-filetype-csv me-2"></i>Send using CSV Data
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button
-                  class="nav-link"
-                  id="manual-mode-tab"
-                  data-bs-toggle="tab"
-                  data-bs-target="#manual-mode-pane"
-                  type="button"
-                  role="tab"
-                  aria-controls="manual-mode-pane"
-                  aria-selected="false"
-                  data-mode="manual"
-                >
-                  <i class="bi bi-list-ul me-2"></i>Manual Recipient List
-                </button>
-              </li>
-            </ul>
-
-            <div class="tab-content" id="modeTabContent">
-              <div
-                class="tab-pane fade show active"
-                id="csv-mode-pane"
-                role="tabpanel"
-                aria-labelledby="csv-mode-tab"
-                tabindex="0"
-              >
-                <div class="card shadow-sm mb-4">
-                  <div class="card-header">
-                    <h5 class="mb-0">
-                      <i class="bi bi-1-circle-fill me-2 text-primary"></i>Step:
-                      Upload CSV & Define Recipient
-                    </h5>
-                  </div>
-                  <div class="card-body">
-                    <div class="mb-3">
-                      <label for="csv-file" class="form-label fw-medium"
-                        >Upload CSV File:</label
-                      >
-                      <div class="input-group">
-                        <input
-                          type="file"
-                          class="form-control"
-                          id="csv-file"
-                          name="csv_file"
-                          accept=".csv, text/csv"
-                        />
-                        <a
-                          href="{{ url_for('static', filename='sample.csv') }}"
-                          download
-                          class="btn btn-outline-secondary"
-                          title="Download Sample CSV File"
-                        >
-                          <i class="bi bi-download"></i> Sample
-                        </a>
-                      </div>
-                      <div class="form-text">
-                        Must have headers in the first row (e.g., Email,
-                        FirstName). UTF-8 recommended. Max {{
-                        limits.MAX_CSV_RECIPIENTS }} rows processed.
-                      </div>
-                    </div>
-                    <div id="csv-headers-section" class="mb-3 d-none">
-                      <label class="form-label fw-medium"
-                        >Detected CSV Headers (Placeholders):</label
-                      >
-                      <div
-                        id="headers-container"
-                        class="border rounded p-2 bg-light"
-                      >
-                        <span class="text-muted small"
-                          >Upload a valid CSV to see available
-                          placeholders.</span
-                        >
-                      </div>
-                      <div class="form-text">Click a header to copy.</div>
-                    </div>
-                    <div class="mb-3">
-                      <label
-                        for="recipient-template"
-                        class="form-label fw-medium"
-                        >Recipient Email Template:</label
-                      >
-                      <div class="input-group">
-                        <input
-                          type="text"
-                          class="form-control"
-                          id="recipient-template"
-                          name="recipient_template"
-                          placeholder="e.g., {Email} or {contact_email}"
-                        />
-                        <button
-                          class="btn btn-outline-secondary placeholder-inserter-btn"
-                          type="button"
-                          data-target="recipient-template"
-                          title="Insert Placeholder"
-                          disabled
-                        >
-                          <i class="bi bi-braces"></i>
-                        </button>
-                      </div>
-                      <div class="form-text">
-                        Use exactly one placeholder matching the email column in
-                        your CSV.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                class="tab-pane fade"
-                id="manual-mode-pane"
-                role="tabpanel"
-                aria-labelledby="manual-mode-tab"
-                tabindex="0"
-              >
-                <div class="card shadow-sm mb-4">
-                  <div class="card-header">
-                    <h5 class="mb-0">
-                      <i class="bi bi-1-circle-fill me-2 text-primary"></i>Step:
-                      Enter Recipient Emails
-                    </h5>
-                  </div>
-                  <div class="card-body">
-                    <div class="mb-3">
-                      <label
-                        for="manual-recipients"
-                        class="form-label fw-medium"
-                        >Recipient Emails:</label
-                      >
-                      <textarea
-                        class="form-control"
-                        id="manual-recipients"
-                        name="manual_recipients"
-                        rows="5"
-                        placeholder="Enter email addresses, separated by commas, spaces, or new lines."
-                      ></textarea>
-                      <div class="form-text">
-                        Max {{ limits.MAX_MANUAL_RECIPIENTS }} recipients. The
-                        same email will be sent to all. Placeholders NOT
-                        replaced.
-                      </div>
-                      <div
-                        id="manual-recipient-count"
-                        class="form-text text-muted mt-1"
-                      >
-                        Recipients: 0 / {{ limits.MAX_MANUAL_RECIPIENTS }}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card shadow-sm mb-4">
+        <!-- Tab Content -->
+        <div class="tab-content" id="modeTabContent">
+          <!-- CSV Mode Pane -->
+          <div
+            class="tab-pane fade show active"
+            id="csv-mode-pane"
+            role="tabpanel"
+            aria-labelledby="csv-mode-tab"
+            tabindex="0"
+          >
+            <div class="card">
               <div class="card-header">
-                <h5 class="mb-0">
-                  <i class="bi bi-2-circle-fill me-2 text-primary"></i>Step:
-                  Compose Email & Attach Files
+                <h5>
+                  <i class="bi bi-people-fill"></i> Step 1: Upload Recipients
+                  (CSV)
                 </h5>
               </div>
               <div class="card-body">
                 <div class="mb-3">
-                  <label for="subject-template" class="form-label fw-medium"
-                    >Subject:</label
+                  <label for="csv-file" class="form-label"
+                    >Upload CSV File</label
+                  >
+                  <input
+                    class="form-control"
+                    type="file"
+                    id="csv-file"
+                    name="csv_file"
+                    accept=".csv, text/csv"
+                  />
+                  <div class="form-text">
+                    Must contain headers. Max {{ limits.MAX_CSV_RECIPIENTS }}
+                    rows. UTF-8 encoding recommended.
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label for="recipient-template" class="form-label"
+                    >Recipient Email Template</label
                   >
                   <div class="input-group">
                     <input
                       type="text"
                       class="form-control"
-                      id="subject-template"
-                      name="subject_template"
-                      placeholder="e.g., Welcome {FirstName}! Special offer inside..."
-                      required
-                      maxlength="255"
+                      id="recipient-template"
+                      name="recipient_template"
+                      placeholder="{EmailColumn}"
+                      aria-label="Recipient email column placeholder"
+                      aria-describedby="recipient-inserter-btn"
                     />
                     <button
                       class="btn btn-outline-secondary placeholder-inserter-btn"
                       type="button"
-                      data-target="subject-template"
+                      id="recipient-inserter-btn"
+                      data-target="recipient-template"
                       title="Insert Placeholder"
                       disabled
                     >
@@ -285,155 +187,241 @@
                     </button>
                   </div>
                   <div class="form-text">
-                    Required. Use {Placeholders} in CSV mode. Max 255 chars.
+                    Enter the placeholder for the column containing email
+                    addresses (e.g., {EmailAddress}). Must match a header in
+                    your CSV.
                   </div>
                 </div>
 
-                <div class="mb-3">
-                  <label for="editor-container" class="form-label fw-medium"
-                    >Body:</label
+                <div id="csv-headers-section" class="mb-3 d-none">
+                  <label class="form-label"
+                    >Available Placeholders (from CSV Headers)</label
                   >
-                  <div id="editor-wrapper">
-                    <div id="custom-toolbar"></div>
-                    <div id="editor-container" style="min-height: 150px"></div>
-                  </div>
-                  <div id="body-char-count" class="form-text text-end mt-1">
-                    0 / 5000
-                  </div>
-                  <input
-                    type="hidden"
-                    id="body-template"
-                    name="body_template"
-                  />
-                  <div class="form-text">
-                    Required. Use {Placeholders} in CSV mode.
-                  </div>
-                </div>
-
-                <div class="mb-3">
-                  <label for="attachments" class="form-label fw-medium"
-                    >Attach Files (Optional):</label
-                  >
-                  <input
-                    type="file"
-                    class="form-control"
-                    id="attachments"
-                    name="attachments"
-                    multiple
-                  />
-                  <div class="form-text">
-                    Max {{ limits.MAX_ATTACHMENTS_PER_EMAIL }} files, {{
-                    limits.MAX_TOTAL_ATTACHMENT_SIZE_MB }} MB total.
-                  </div>
-                  <div id="attachment-list" class="mt-2"></div>
                   <div
-                    id="attachment-error"
-                    class="text-danger small mt-1"
-                  ></div>
+                    id="headers-container"
+                    class="p-2 rounded bg-light border"
+                  >
+                    <span class="text-muted small"
+                      >Upload a valid CSV to see available placeholders.</span
+                    >
+                  </div>
+                  <div class="form-text">
+                    Click a placeholder badge to copy it. Use these in Subject
+                    and Body.
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="card shadow-sm mb-4">
+          <!-- Manual Mode Pane -->
+          <div
+            class="tab-pane fade"
+            id="manual-mode-pane"
+            role="tabpanel"
+            aria-labelledby="manual-mode-tab"
+            tabindex="0"
+          >
+            <div class="card">
               <div class="card-header">
-                <h5 class="mb-0">
-                  <i class="bi bi-3-circle-fill me-2 text-primary"></i>Step:
-                  Preview & Send
+                <h5>
+                  <i class="bi bi-pencil-fill"></i> Step 1: Enter Recipients
+                  (Manual)
                 </h5>
               </div>
               <div class="card-body">
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary"
-                    id="preview-button"
-                    disabled
+                <div class="mb-3">
+                  <label for="manual-recipients" class="form-label"
+                    >Recipient Emails</label
                   >
-                    <i class="bi bi-eye me-1"></i>Generate Preview
-                  </button>
-                  <button
-                    type="submit"
-                    class="btn btn-primary px-4"
-                    id="send-button"
-                    disabled
+                  <textarea
+                    class="form-control"
+                    id="manual-recipients"
+                    name="manual_recipients"
+                    rows="4"
+                    placeholder="Enter email addresses, separated by commas, spaces, or new lines..."
+                  ></textarea>
+                  <div
+                    id="manual-recipient-count"
+                    class="form-text text-end mt-1"
                   >
-                    <span
-                      class="spinner-border spinner-border-sm me-1"
-                      role="status"
-                      aria-hidden="true"
-                      style="display: none"
-                    ></span>
-                    <i class="bi bi-send-fill me-1"></i>Send Emails
-                  </button>
-                </div>
-                <div class="form-text mt-1">
-                  Preview uses first CSV row or shows static content. Sending is
-                  rate-limited.
-                </div>
-
-                <div id="preview-area" class="mt-4 d-none">
-                  <hr />
-                  <h6>
-                    <i class="bi bi-binoculars-fill me-2 text-secondary"></i
-                    >Email Preview
-                    <small
-                      id="preview-context"
-                      class="text-muted fw-normal"
-                    ></small>
-                  </h6>
-                  <div class="card border-secondary mt-2">
-                    <div class="card-body preview-content p-3">
-                      <p class="mb-1">
-                        <strong>From:</strong>
-                        <span class="text-muted font-monospace small"
-                          >{{ user_email }}</span
-                        >
-                      </p>
-                      <p class="mb-1">
-                        <strong>To:</strong>
-                        <span
-                          id="preview-to"
-                          class="text-muted font-monospace small"
-                        ></span>
-                      </p>
-                      <p class="mb-2">
-                        <strong>Subject:</strong>
-                        <span id="preview-subject" class="text-muted"></span>
-                      </p>
-                      <hr class="my-2" />
-                      <div
-                        id="preview-body"
-                        style="max-height: 300px; overflow-y: auto"
-                      ></div>
-                      <div
-                        id="preview-attachments"
-                        class="mt-2 small text-muted"
-                      ></div>
-                    </div>
+                    Recipients: 0 / {{ limits.MAX_MANUAL_RECIPIENTS }}
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+        <!-- End Tab Content -->
 
-            <div id="status-message" class="mt-4 mb-5" aria-live="polite"></div>
+        <!-- Common Email Composition -->
+        <div class="card">
+          <div class="card-header">
+            <h5>
+              <i class="bi bi-envelope-plus-fill"></i> Step 2: Compose Email &
+              Attach Files
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label for="subject-template" class="form-label">Subject</label>
+              <div class="input-group">
+                <input
+                  type="text"
+                  class="form-control"
+                  id="subject-template"
+                  name="subject_template"
+                  placeholder="Email Subject Line"
+                  maxlength="255"
+                />
+                <button
+                  class="btn btn-outline-secondary placeholder-inserter-btn"
+                  type="button"
+                  data-target="subject-template"
+                  title="Insert Placeholder (CSV Mode)"
+                  disabled
+                >
+                  <i class="bi bi-braces"></i>
+                </button>
+              </div>
+              <div class="form-text">
+                Required. Use {Placeholders} in CSV mode. Max 255 chars.
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="editor-container" class="form-label">Body</label>
+              <div id="editor-wrapper">
+                <div id="editor-container"></div>
+              </div>
+              <div class="d-flex justify-content-end">
+                <span id="body-char-count" class="form-text text-end mt-1"
+                  >0 / {{ limits.MAX_BODY_LENGTH }}</span
+                >
+              </div>
+              <div class="form-text">
+                Required. Use {Placeholders} in CSV mode. Quill editor handles
+                formatting.
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="attachments" class="form-label"
+                >Attach Files (Optional)</label
+              >
+              <input
+                class="form-control"
+                type="file"
+                id="attachments"
+                name="attachments"
+                multiple
+              />
+              <div id="attachment-error" class="text-danger small mt-1"></div>
+              <div class="form-text">
+                Max {{ limits.MAX_ATTACHMENTS_PER_EMAIL }} files, {{
+                limits.MAX_TOTAL_ATTACHMENT_SIZE_MB }} MB total.
+              </div>
+              <div id="attachment-list" class="mt-2"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview & Send Section -->
+        <div class="card">
+          <div class="card-header">
+            <h5>
+              <i class="bi bi-send-check-fill"></i> Step 3: Preview & Send
+            </h5>
+          </div>
+          <div class="card-body text-center">
+            <button
+              type="button"
+              id="preview-button"
+              class="btn btn-outline-secondary me-2"
+              disabled
+            >
+              <i class="bi bi-eye-fill me-1"></i> Generate Preview
+            </button>
+            <button
+              type="submit"
+              id="send-button"
+              class="btn btn-primary"
+              disabled
+            >
+              <span
+                class="spinner-border spinner-border-sm me-1"
+                role="status"
+                aria-hidden="true"
+                style="display: none"
+              ></span>
+              <i class="bi bi-send-fill me-1"></i> Send Emails
+            </button>
+            <div class="form-text mt-2">
+              Preview uses first CSV row or shows static content. Sending is
+              rate-limited.
+            </div>
           </div>
         </div>
       </form>
+      <!-- End Form -->
+
+      <!-- Preview Display Area -->
+      <div id="preview-area" class="card mt-4 d-none">
+        <div
+          class="card-header d-flex justify-content-between align-items-center"
+        >
+          <span
+            ><i class="bi bi-binoculars-fill me-2"></i> Email Preview
+            <span id="preview-context" class="text-muted small"></span
+          ></span>
+          <button
+            type="button"
+            class="btn-close btn-sm"
+            aria-label="Close Preview"
+            onclick="document.getElementById('preview-area').classList.add('d-none');"
+          ></button>
+        </div>
+        <div class="card-body preview-content">
+          <p>
+            <strong>From:</strong>
+            <span id="preview-from">{{ user_email }}</span>
+          </p>
+          <p><strong>To:</strong> <span id="preview-to"></span></p>
+          <p><strong>Subject:</strong> <span id="preview-subject"></span></p>
+          <div id="preview-body"></div>
+          <div id="preview-attachments" class="small mt-2 text-muted"></div>
+        </div>
+      </div>
+
+      <!-- Status Message Area -->
+      <div id="status-message" class="mt-4"></div>
+    </main>
+
+    <!-- Help Modal Trigger -->
+    <div class="text-center my-4">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-info"
+        data-bs-toggle="modal"
+        data-bs-target="#helpModal"
+      >
+        <i class="bi bi-question-circle-fill me-1"></i> Need Help?
+      </button>
     </div>
 
+    <!-- Help Modal -->
     <div
       class="modal fade"
-      id="instructionsModal"
+      id="helpModal"
       tabindex="-1"
-      aria-labelledby="instructionsModalLabel"
+      aria-labelledby="helpModalLabel"
       aria-hidden="true"
     >
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="instructionsModalLabel">
-              <i class="bi bi-info-circle-fill me-2 text-primary"></i>How to Use
-              SendSuite & Limits
+            <h5 class="modal-title" id="helpModalLabel">
+              <i class="bi bi-info-circle-fill me-2"></i> SendSuite Guide
             </h5>
             <button
               type="button"
@@ -443,118 +431,121 @@
             ></button>
           </div>
           <div class="modal-body">
-            <h6>Choose Your Mode:</h6>
+            <h6><i class="bi bi-toggles me-1"></i> Choosing a Mode</h6>
             <ul>
               <li>
-                <strong>Send using CSV Data:</strong> Best for sending
-                personalized emails based on data in a spreadsheet (CSV file).
+                <strong>CSV Mode:</strong> Best for sending personalized emails
+                to many recipients. Requires a CSV file with recipient data and
+                headers.
               </li>
               <li>
-                <strong>Manual Recipient List:</strong> Best for sending the
-                <em>exact same</em> email to a list of people you type or paste
-                in. No personalization.
+                <strong>Manual Mode:</strong> Good for sending the same email to
+                a smaller list of people you enter directly. Does not use
+                placeholders from a file.
               </li>
             </ul>
-            <hr />
 
-            <h6>CSV Mode Steps:</h6>
+            <h6><i class="bi bi-filetype-csv me-1"></i> Using CSV Mode</h6>
             <ol>
               <li>
-                <strong>Upload CSV:</strong> Select your `.csv` file. The first
-                row MUST contain headers (e.g., `Email`, `FirstName`).
-                <a
-                  href="{{ url_for('static', filename='sample.csv') }}"
-                  download
-                  >Download Sample CSV</a
-                >.
+                <strong>Upload CSV:</strong> Click "Choose File" and select your
+                CSV. Ensure it's UTF-8 encoded if possible and has headers in
+                the first row (e.g., `FirstName`, `EmailAddress`, `CouponCode`).
               </li>
               <li>
-                <strong>Check Headers:</strong> If valid, detected headers
-                (placeholders) will appear below the upload.
+                <strong>Recipient Template:</strong> In the "Recipient Email
+                Template" field, enter the exact placeholder for the column
+                containing email addresses. Example: If your email column header
+                is `Email`, enter `{Email}`.
               </li>
               <li>
-                <strong>Recipient Template:</strong> Enter the placeholder for
-                the email column (e.g., `{Email}`). ONLY ONE placeholder.
+                <strong>Placeholders:</strong> After uploading, available
+                placeholders (your CSV headers) will appear. Click them to copy.
+                Use the
+                <button
+                  class="btn btn-outline-secondary btn-xs placeholder-inserter-btn"
+                >
+                  <i class="bi bi-braces"></i>
+                </button>
+                button or the editor's <i class="bi bi-braces"></i> button to
+                insert them into your Subject and Body.
               </li>
               <li>
-                <strong>Compose Email:</strong> Write Subject/Body. Use
-                <i class="bi bi-braces"></i> or
-                <i class="bi bi-paperclip"></i> buttons/icons to insert
-                placeholders like `{FirstName}`. They must match CSV headers
-                exactly (case-sensitive). Attach files if needed.
+                <strong>Compose:</strong> Write your Subject and Body using the
+                placeholders where needed (e.g., "Hi {FirstName}, here's your
+                code: {CouponCode}").
               </li>
               <li>
-                <strong>Preview:</strong> Check how the email looks using data
-                from the *first* CSV row. Verify placeholders.
+                <strong>Preview:</strong> Click "Generate Preview" to see how
+                the email will look using data from the first row of your CSV.
               </li>
               <li>
-                <strong>Send:</strong> Sends emails from your logged-in Gmail
-                account.
+                <strong>Send:</strong> Click "Send Emails". The app will send
+                one email per row in your CSV (up to the limit).
               </li>
             </ol>
 
-            <hr />
-            <h6>Manual Mode Steps:</h6>
+            <h6><i class="bi bi-list-ul me-1"></i> Using Manual Mode</h6>
             <ol>
               <li>
-                <strong>Enter Recipients:</strong> Type/paste emails (comma,
-                space, or line separated).
+                <strong>Enter Recipients:</strong> Type or paste email addresses
+                into the "Recipient Emails" box. Separate them with commas,
+                spaces, or new lines.
               </li>
               <li>
-                <strong>Compose Email:</strong> Write Subject/Body & attach
-                files. <strong class="text-danger">Note:</strong> Text like
-                `{Placeholder}` is sent literally, NOT replaced.
+                <strong>Compose:</strong> Write your Subject and Body. Note:
+                Placeholders like `{FirstName}` will NOT be replaced and will
+                appear literally in the email.
               </li>
-              <li><strong>Preview:</strong> Check the static email content.</li>
               <li>
-                <strong>Send:</strong> Sends emails from your logged-in Gmail
-                account.
+                <strong>Preview:</strong> Click "Generate Preview" to see the
+                static email content.
+              </li>
+              <li>
+                <strong>Send:</strong> Click "Send Emails". The app will send
+                the same email to each address listed.
               </li>
             </ol>
-            <hr />
-            <h6>Usage Limits:</h6>
+
+            <h6><i class="bi bi-paperclip me-1"></i> Attachments</h6>
             <ul>
               <li>
-                <strong>Rate Limit:</strong> Sending is rate-limited. Wait if
-                you hit the limit.
+                Click "Choose Files" under "Attach Files" to add attachments.
               </li>
               <li>
-                <strong>CSV Rows:</strong> Max
-                <strong>{{ limits.MAX_CSV_RECIPIENTS }}</strong> rows processed.
+                Respect the limits shown (number of files and total size).
               </li>
-              <li>
-                <strong>Manual Recipients:</strong> Max
-                <strong>{{ limits.MAX_MANUAL_RECIPIENTS }}</strong> recipients.
-              </li>
-              <li>
-                <strong>Attachments:</strong> Max
-                <strong>{{ limits.MAX_ATTACHMENTS_PER_EMAIL }}</strong> files,
-                Total
-                <strong>{{ limits.MAX_TOTAL_ATTACHMENT_SIZE_MB }} MB</strong>.
-              </li>
-              <li>
-                <strong>Gmail Limits:</strong> Google's own sending limits also
-                apply.
-              </li>
+              <li>Attachments are sent with every email (in both modes).</li>
             </ul>
-            <hr />
-            <h6>General Notes:</h6>
+
+            <h6>
+              <i class="bi bi-exclamation-triangle-fill me-1"></i> Common Issues
+              & Tips
+            </h6>
             <ul>
               <li>
-                <strong>Authentication:</strong> Uses secure Google OAuth2. Your
-                password is never seen/stored.
+                <strong>CSV Errors:</strong> Ensure your CSV has headers and is
+                correctly formatted. Check for stray commas or quotes. UTF-8
+                encoding is preferred.
               </li>
               <li>
-                <strong>Placeholders (CSV):</strong> Must be `{HeaderName}` and
-                match exactly (case-sensitive).
+                <strong>Placeholders Not Working:</strong> Double-check that the
+                placeholder name (inside `{}`) exactly matches the CSV header,
+                including case sensitivity. Ensure you are in CSV mode.
               </li>
               <li>
-                <strong>Preview:</strong> Always review carefully before
-                sending.
+                <strong>Emails Failing:</strong> Check the results table for
+                error details. Common reasons include invalid email addresses,
+                Gmail sending limits being reached, or temporary API issues.
               </li>
               <li>
-                <strong>Errors:</strong> Check status messages for details on
-                skipped/failed items.
+                <strong>Authentication Errors (401/403):</strong> Your Google
+                session may have expired or permissions might have been revoked.
+                Reload the page to sign in again.
+              </li>
+              <li>
+                <strong>Rate Limits (429):</strong> You've sent too many emails
+                too quickly. Wait a while before trying again.
               </li>
             </ul>
           </div>
@@ -571,26 +562,40 @@
       </div>
     </div>
 
-    <footer class="footer mt-auto py-3 bg-light border-top">
-      <div class="container text-center">
-        <span class="text-muted small">SendSuite v2.2</span>
-        <a
-          href="{{ url_for('privacy') }}"
-          class="text-muted small ms-3"
-          target="_blank"
-          rel="noopener noreferrer"
-          >Privacy Policy</a
+    <footer class="footer text-center mt-auto py-3 bg-light">
+      <div class="container">
+        <span class="text-muted"
+          >SendSuite v2.2 |
+          <a href="{{ url_for('privacy') }}" class="text-muted"
+            >Privacy Policy</a
+          ></span
         >
       </div>
     </footer>
 
-    <script src="https://cdn.quilljs.com/1.3.7/quill.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script>
+      const appLimitsConfig = {
+        MAX_TOTAL_ATTACHMENT_SIZE_MB: Number(
+          "{{ limits.MAX_TOTAL_ATTACHMENT_SIZE_MB | tojson }}"
+        ),
+        MAX_ATTACHMENTS_PER_EMAIL: Number(
+          "{{ limits.MAX_ATTACHMENTS_PER_EMAIL | tojson }}"
+        ),
+        MAX_MANUAL_RECIPIENTS: Number(
+          "{{ limits.MAX_MANUAL_RECIPIENTS | tojson }}"
+        ),
+        MAX_CSV_RECIPIENTS: Number("{{ limits.MAX_CSV_RECIPIENTS | tojson }}"),
+        MAX_BODY_LENGTH: 5000,
+      };
+      window.appLimits = appLimitsConfig;
+    </script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
   </body>
 </html>

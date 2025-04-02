@@ -601,6 +601,17 @@ def send_emails():
         app.logger.error(f"A critical error occurred in /send-emails: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"An unexpected server error occurred: {str(e)}"}), 500
 
+@app.route('/logout')
+def logout():
+    session.pop('credentials', None)
+    session.pop('user_email', None)
+    session.pop('oauth_state', None) # Clear any pending states too
+    app.logger.info("User logged out, session cleared.")
+    return redirect(url_for('index'))
+
+def create_message(sender, to, subject, body_html, attachments=None):
+    message = MIMEMultipart('related')
+    message['to'] = to
 
 if __name__ == '__main__':
     is_configured = bool(CLIENT_CONFIG or os.path.exists(CREDENTIALS_PATH))
