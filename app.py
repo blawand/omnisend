@@ -49,7 +49,7 @@ limiter = Limiter(
     strategy="fixed-window"
 )
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/gmail.readonly','openid','https://www.googleapis.com/auth/userinfo.profile']
+SCOPES = ['https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/userinfo.email','openid']
 CREDENTIALS_PATH = 'credentials.json'
 CLIENT_CONFIG = None
 
