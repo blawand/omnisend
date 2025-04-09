@@ -28,30 +28,14 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='styles.css') }}"
     />
-    <style>
-      .navbar .user-info {
-        display: flex;
-        align-items: center;
-        font-size: 0.9rem;
-        margin-right: 1rem;
-      }
-      .navbar .user-info i {
-        margin-right: 0.5rem;
-        font-size: 1.1rem;
-      }
-      .navbar .btn-logout {
-        font-size: 0.9rem;
-        padding: 0.3rem 0.8rem;
-      }
-    </style>
   </head>
   <body>
     <nav
-      class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm sticky-top"
+      class="navbar navbar-expand-lg navbar-light bg-light shadow-sm sticky-top"
     >
       <div class="container">
         <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
-          <i class="bi bi-envelope-paper-heart-fill me-2 text-white"></i
+          <i class="bi bi-envelope-paper-heart-fill me-2 text-primary"></i
           >SendSuite
         </a>
         <button
@@ -67,14 +51,14 @@
         </button>
         <div class="collapse navbar-collapse" id="appNav">
           <ul class="navbar-nav ms-auto align-items-center">
-            <li class="nav-item user-info me-lg-3 mb-2 mb-lg-0 text-white-50">
+            <li class="nav-item user-info me-lg-3 mb-2 mb-lg-0 text-muted">
               <i class="bi bi-person-circle"></i>
               <span id="user-email-display">{{ user_email }}</span>
             </li>
             <li class="nav-item">
               <a
                 href="{{ url_for('logout') }}"
-                class="btn btn-sm btn-outline-light btn-logout"
+                class="btn btn-sm btn-outline-secondary btn-logout"
               >
                 <i class="bi bi-box-arrow-right me-1"></i>Logout
               </a>
@@ -85,7 +69,6 @@
     </nav>
 
     <main class="container mt-4">
-      <!-- Mode Selection Tabs -->
       <ul
         class="nav nav-pills mb-4 justify-content-center"
         id="modeTabs"
@@ -127,9 +110,7 @@
         <input type="hidden" name="mode" id="current-mode" value="csv" />
         <input type="hidden" name="body_template" id="body-template" />
 
-        <!-- Tab Content -->
         <div class="tab-content" id="modeTabContent">
-          <!-- CSV Mode Pane -->
           <div
             class="tab-pane fade show active"
             id="csv-mode-pane"
@@ -159,6 +140,12 @@
                   <div class="form-text">
                     Must contain headers. Max {{ limits.MAX_CSV_RECIPIENTS }}
                     rows. UTF-8 encoding recommended.
+                    <a
+                      href="{{ url_for('static', filename='sample.csv') }}"
+                      download="sample.csv"
+                      class="ms-2"
+                      ><i class="bi bi-download me-1"></i>Download Sample CSV</a
+                    >
                   </div>
                 </div>
                 <div class="mb-3">
@@ -214,7 +201,6 @@
             </div>
           </div>
 
-          <!-- Manual Mode Pane -->
           <div
             class="tab-pane fade"
             id="manual-mode-pane"
@@ -252,9 +238,7 @@
             </div>
           </div>
         </div>
-        <!-- End Tab Content -->
 
-        <!-- Common Email Composition -->
         <div class="card">
           <div class="card-header">
             <h5>
@@ -326,7 +310,6 @@
           </div>
         </div>
 
-        <!-- Preview & Send Section -->
         <div class="card">
           <div class="card-header">
             <h5>
@@ -363,9 +346,7 @@
           </div>
         </div>
       </form>
-      <!-- End Form -->
 
-      <!-- Preview Display Area -->
       <div id="preview-area" class="card mt-4 d-none">
         <div
           class="card-header d-flex justify-content-between align-items-center"
@@ -393,11 +374,9 @@
         </div>
       </div>
 
-      <!-- Status Message Area -->
       <div id="status-message" class="mt-4"></div>
     </main>
 
-    <!-- Help Modal Trigger -->
     <div class="text-center my-4">
       <button
         type="button"
@@ -409,7 +388,6 @@
       </button>
     </div>
 
-    <!-- Help Modal -->
     <div
       class="modal fade"
       id="helpModal"
@@ -451,6 +429,17 @@
                 <strong>Upload CSV:</strong> Click "Choose File" and select your
                 CSV. Ensure it's UTF-8 encoded if possible and has headers in
                 the first row (e.g., `FirstName`, `EmailAddress`, `CouponCode`).
+                <ul class="mt-2">
+                  <li>
+                    Need an example?
+                    <a
+                      href="{{ url_for('static', filename='sample.csv') }}"
+                      download="sample.csv"
+                      >Download a sample CSV file</a
+                    >
+                    to see the format.
+                  </li>
+                </ul>
               </li>
               <li>
                 <strong>Recipient Template:</strong> In the "Recipient Email
